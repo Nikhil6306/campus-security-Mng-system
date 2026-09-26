@@ -24,7 +24,8 @@ const mono = JetBrains_Mono({
  * values each page declares; set `NEXT_PUBLIC_SITE_URL` in the deployment
  * environment so canonical URLs and social cards point at the real host.
  */
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+const siteUrl =
+  process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
