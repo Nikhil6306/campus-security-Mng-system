@@ -116,21 +116,26 @@ async function main() {
   /* --- Sign in ---------------------------------------------------- */
   section("TEST 0 — Authentication and role separation");
 
+  const demoPassword = process.env.DEMO_ACCOUNT_PASSWORD;
+  if (!demoPassword) {
+    throw new Error("Set DEMO_ACCOUNT_PASSWORD to match the server local demo seed.");
+  }
+
   const adminLogin = await post(admin, "/api/auth/login", {
     email: "admin@dsvv.edu.in",
-    password: "Admin@123",
+    password: demoPassword,
   });
   check("admin signs in", adminLogin.ok && adminLogin.data?.role === "admin");
 
   const guardLogin = await post(guard, "/api/auth/login", {
     email: "security@dsvv.edu.in",
-    password: "Security@123",
+    password: demoPassword,
   });
   check("security guard signs in", guardLogin.ok && guardLogin.data?.role === "security");
 
   const teacherLogin = await post(teacher, "/api/auth/login", {
     email: "anupama.sharma@dsvv.edu.in",
-    password: "Teacher@123",
+    password: demoPassword,
   });
   check("teacher signs in", teacherLogin.ok && teacherLogin.data?.role === "teacher");
 

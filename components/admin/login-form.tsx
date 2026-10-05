@@ -45,7 +45,7 @@ export function LoginForm({ expectedRole }: { expectedRole?: Role } = {}) {
 
   const fillDemo = (account: DemoAccount) => {
     setEmail(account.email);
-    setPassword(account.password);
+    setPassword("");
     setErrors({});
   };
 
@@ -175,15 +175,12 @@ export function LoginForm({ expectedRole }: { expectedRole?: Role } = {}) {
                 <span className="block truncate font-mono text-[11px] text-muted-foreground">
                   {account.email}
                 </span>
-                <span className="block truncate font-mono text-[11px] text-muted-foreground">
-                  {account.password}
-                </span>
               </button>
             </li>
           ))}
         </ul>
         <p className="mt-2.5 text-[11px] text-muted-foreground">
-          Select an account to fill the form, then sign in.
+          Select an account to fill its email, then enter its configured password.
         </p>
       </section>
 

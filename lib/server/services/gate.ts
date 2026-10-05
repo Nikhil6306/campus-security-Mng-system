@@ -141,20 +141,21 @@ export function verifyPass(input: {
     });
   }
 
-  if (booking.visitDate > today) {
+  const vDate = booking.visitDate || today;
+  if (vDate > today) {
     issues.push({
       code: "too_early",
-      message: `This pass is valid on ${booking.visitDate}, not today.`,
+      message: `This pass is valid on ${vDate}, not today.`,
     });
   }
-  if (booking.visitDate < today) {
+  if (vDate < today) {
     issues.push({
       code: "date_passed",
-      message: `This pass was valid on ${booking.visitDate} and is no longer current.`,
+      message: `This pass was valid on ${vDate} and is no longer current.`,
     });
   }
 
-  if (booking.visitDate === today) {
+  if (vDate === today) {
     const settings = readSettings();
     const clock = new Date();
     const minutes = clock.getHours() * 60 + clock.getMinutes();
@@ -258,7 +259,7 @@ export function checkIn(
             plate,
             booking.fullName,
             booking.fullName,
-            booking.purposeDetail || booking.purpose,
+            booking.purposeDetail || booking.purpose || "Campus Visit",
             gate,
             timestamp,
             booking.id,

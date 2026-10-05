@@ -53,7 +53,7 @@ import { api, errorMessage } from "@/lib/api";
 import type { WhatsAppMessageRecord } from "@/lib/api";
 import { getCheckLogs, getGates } from "@/lib/selectors";
 import { STATUS_CODES, type VisitGuest, type VisitRequest } from "@/lib/types";
-import { durationBetween, formatDate, formatDateTime, formatTime, maskMobile } from "@/lib/utils";
+import { durationBetween, formatDate, formatDateTime, formatTime } from "@/lib/utils";
 import { maskAadhaar, validateFutureDate, validateText, validateTime } from "@/lib/validation";
 
 /* ------------------------------------------------------------------ *
@@ -263,8 +263,8 @@ export function RescheduleDialog({
 
   React.useEffect(() => {
     if (open && record) {
-      setDate(record.visitDate);
-      setTime(record.visitTime);
+      setDate(record.visitDate || "");
+      setTime(record.visitTime || "");
       setErrors({});
     }
   }, [open, record]);
@@ -554,30 +554,25 @@ export function VisitDetailDialog({
                 className="shrink-0"
               />
               <dl className="grid flex-1 gap-4 sm:grid-cols-2">
-              <DetailRow label="Mobile" value={record.mobile} mono />
-              <DetailRow label="Email" value={record.email} />
-              <DetailRow label="Gender" value={record.gender} />
-              <DetailRow label="Organization" value={record.organization} />
-              <DetailRow label="Visitor type" value={record.visitorType} />
-              {/* ID numbers and addresses are administrator-only. */}
-              <DetailRow
-                label="ID proof"
-                value={
-                  isAdmin
-                    ? `${record.idType} · ${record.idNumber}`
-                    : `${record.idType} · ${maskMobile(record.idNumber)}`
-                }
-              />
-              {isAdmin ? (
-                <>
-                  <DetailRow
-                    label="Address"
-                    value={record.address}
-                    className="sm:col-span-2"
-                  />
-                  <DetailRow label="Emergency contact" value={record.emergencyContact} mono />
-                </>
-              ) : null}
+                <DetailRow label="Mobile Number" value={record.mobileNumber || record.mobile} mono />
+                <DetailRow
+                  label="Aadhaar Card Number"
+                  value={maskAadhaar(record.aadhaarNumber || record.idNumber || "")}
+                  mono
+                />
+                <DetailRow
+                  label="Car Brought"
+                  value={record.hasCar || record.vehicleRequired ? "Yes" : "No"}
+                />
+                <DetailRow
+                  label="Car Number"
+                  value={(record.hasCar || record.vehicleRequired) ? (record.carNumber || record.vehicleNumber || "None") : "None"}
+                  mono={(record.hasCar || record.vehicleRequired) && Boolean(record.carNumber || record.vehicleNumber)}
+                />
+                <DetailRow
+                  label="Registration Date"
+                  value={formatDate(record.createdAt || record.visitDate || "")}
+                />
               </dl>
             </div>
           </section>

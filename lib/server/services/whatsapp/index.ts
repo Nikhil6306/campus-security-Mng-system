@@ -74,20 +74,20 @@ function templateFor(type: WhatsAppMessageType): string | null {
 
 function templateVariablesFor(type: WhatsAppMessageType, booking: VisitRequest): string[] {
   const common = [
-    booking.fullName,
-    booking.id,
-    booking.visitDate,
-    booking.visitTime,
-    String(booking.numberOfVisitors),
+    booking.fullName || "",
+    booking.id || "",
+    booking.visitDate || "",
+    booking.visitTime || "",
+    String(booking.numberOfVisitors || 1),
   ];
   switch (type) {
     case "faculty_visit_request":
       return [
-        booking.hostName,
-        booking.fullName,
-        booking.id,
-        booking.visitDate,
-        booking.visitTime,
+        booking.hostName || "Host",
+        booking.fullName || "",
+        booking.id || "",
+        booking.visitDate || "",
+        booking.visitTime || "",
       ];
     case "booking_created":
     case "booking_approved":

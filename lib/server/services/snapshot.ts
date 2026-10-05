@@ -280,14 +280,22 @@ export interface PublicBookingView {
   status: string;
   statusCode: string;
   fullName: string;
-  visitorType: string;
-  hostName: string;
-  department: string;
-  purpose: string;
-  visitDate: string;
-  visitTime: string;
-  expectedDuration: string;
-  numberOfVisitors: number;
+  aadhaarNumber?: string;
+  idNumber?: string;
+  mobileNumber?: string;
+  mobile?: string;
+  hasCar?: boolean;
+  carNumber?: string;
+  photoPath?: string;
+  photoUrl?: string;
+  visitorType?: string;
+  hostName?: string;
+  department?: string;
+  purpose?: string;
+  visitDate?: string;
+  visitTime?: string;
+  expectedDuration?: string;
+  numberOfVisitors?: number;
   vehicleNumber?: string;
   badgeNumber?: string;
   passToken?: string;
@@ -303,9 +311,7 @@ export interface PublicBookingView {
 
 /**
  * A booking as its own visitor may see it, after proving they hold the
- * reference *and* the mobile number it was made with. ID numbers, addresses and
- * internal notes are never included — the visitor already knows them, and
- * echoing them back would make the lookup worth attacking.
+ * reference *and* the mobile number it was made with.
  */
 export function publicBookingView(booking: VisitRequest): PublicBookingView {
   const settings = readSettings();
@@ -314,19 +320,24 @@ export function publicBookingView(booking: VisitRequest): PublicBookingView {
     status: booking.status,
     statusCode: STATUS_CODES[booking.status],
     fullName: booking.fullName,
-    visitorType: booking.visitorType,
+    aadhaarNumber: booking.aadhaarNumber,
+    idNumber: booking.idNumber || booking.aadhaarNumber,
+    mobileNumber: booking.mobileNumber || booking.mobile,
+    mobile: booking.mobile || booking.mobileNumber,
+    hasCar: booking.hasCar || Boolean(booking.vehicleRequired),
+    carNumber: booking.carNumber || booking.vehicleNumber,
+    photoPath: booking.photoPath || booking.photoUrl,
+    photoUrl: booking.photoUrl || booking.photoPath,
+    visitorType: booking.visitorType || "Guest",
     hostName: booking.hostName,
     department: booking.department,
-    purpose: booking.purpose,
+    purpose: booking.purpose || "Campus Visit",
     visitDate: booking.visitDate,
     visitTime: booking.visitTime,
     expectedDuration: booking.expectedDuration,
-    numberOfVisitors: booking.numberOfVisitors,
-    vehicleNumber: booking.vehicleNumber,
+    numberOfVisitors: booking.numberOfVisitors || 1,
+    vehicleNumber: booking.carNumber || booking.vehicleNumber,
     badgeNumber: booking.badgeNumber,
-    // A lookup key, not a credential. Withheld once the booking reaches a
-    // closed state (rejected, cancelled, expired) so a stale QR stops
-    // resolving to anything at all.
     passToken: PASS_TOKEN_STATUSES.includes(booking.status) ? booking.passToken : undefined,
     createdAt: booking.createdAt,
     decidedAt: booking.decidedAt,

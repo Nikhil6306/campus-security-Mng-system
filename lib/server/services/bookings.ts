@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { AuthSession, VisitRequest, VisitStatus } from "@/lib/types";
+import type { AuthSession, VisitRequest, VisitStatus, VisitorType, VisitPurpose } from "@/lib/types";
 import { HOST_REQUIRED_PURPOSES } from "@/lib/types";
 import { fromMinutes, passExpiryFor, toMinutes } from "@/lib/settings";
 import { todayISO } from "@/lib/utils";
@@ -154,7 +154,7 @@ export function createBooking(
     );
   }
 
-  if (!settings.allowedVisitorTypes.includes(input.visitorType)) {
+  if (input.visitorType && !settings.allowedVisitorTypes.includes(input.visitorType as unknown as VisitorType)) {
     throw badRequest("That visitor type is not currently accepted.", {
       visitorType: "This visitor type is not accepted right now.",
     });
@@ -222,7 +222,7 @@ export function createBooking(
   let departmentId: string | null = input.departmentId?.trim() || null;
   let department = "";
 
-  if (HOST_REQUIRED_PURPOSES.includes(input.purpose) && !hostId) {
+  if (input.purpose && HOST_REQUIRED_PURPOSES.includes(input.purpose as unknown as VisitPurpose) && !hostId) {
     throw badRequest("Select the person you want to meet.", {
       hostId: "Choose a host for this purpose.",
     });
@@ -270,14 +270,17 @@ export function createBooking(
 
   /* --- Write ------------------------------------------------------- */
 
-  // The WhatsApp contact defaults to the mobile the visitor already gave, so a
-  // booking taken at the desk still has somewhere to send the pass.
+  const mobileVal = (input.mobileNumber || input.mobile || "").replace(/[\s-]/g, "");
+  const aadhaarVal = (input.aadhaarNumber || input.idNumber || "").replace(/[^\d]/g, "");
+  const hasCarVal = Boolean(input.hasCar || input.vehicleRequired);
+  const carNumberVal = hasCarVal ? (input.carNumber || input.vehicleNumber || "").trim().toUpperCase() : null;
+
   const whatsappCountryCode = input.whatsappCountryCode || "+91";
-  const whatsappNumber = input.whatsappNumber || input.mobile;
+  const whatsappNumber = input.whatsappNumber || mobileVal;
 
   const booking = tx(() => {
     const timestamp = now();
-    const existing = findVisitorByMobile(input.mobile);
+    const existing = findVisitorByMobile(mobileVal);
 
     let visitorId: string;
     if (existing) {
@@ -296,24 +299,30 @@ export function createBooking(
       // completed visit is part of that visit's record — removing the bytes
       // would blank out the gate history that referenced them.
       run(
-        `UPDATE visitors SET full_name = ?, email = ?, gender = ?, id_type = ?, id_number = ?,
-            photo_url = ?, organization = ?, address = ?, emergency_contact = ?,
+        `UPDATE visitors SET full_name = ?, mobile = ?, mobile_number = ?, aadhaar_number = ?, id_number = ?,
+            has_car = ?, car_number = ?, photo_path = ?, photo_url = ?, email = ?, gender = ?,
+            organization = ?, address = ?, emergency_contact = ?,
             whatsapp_country_code = ?, whatsapp_number = ?, visitor_type = ?,
             total_visits = total_visits + 1, updated_at = ?
           WHERE id = ?`,
         [
           input.fullName,
-          input.email || existing.email,
-          input.gender,
-          input.idType,
-          input.idNumber,
+          mobileVal,
+          mobileVal,
+          aadhaarVal,
+          aadhaarVal,
+          toInt(hasCarVal),
+          carNumberVal,
           photo.path,
-          input.organization || existing.organization,
-          input.address || existing.address,
-          input.emergencyContact || existing.emergencyContact,
+          photo.path,
+          input.email || existing.email || "",
+          input.gender || "Prefer not to say",
+          input.organization || existing.organization || "",
+          input.address || existing.address || "",
+          input.emergencyContact || existing.emergencyContact || "",
           whatsappCountryCode,
           whatsappNumber,
-          input.visitorType,
+          input.visitorType || "Guest",
           timestamp,
           visitorId,
         ],
@@ -322,25 +331,31 @@ export function createBooking(
       visitorId = nextId("VSTR");
       run(
         `INSERT INTO visitors
-           (id, full_name, mobile, email, gender, id_type, id_number, photo_url, organization, address,
+           (id, full_name, mobile, mobile_number, aadhaar_number, id_number, has_car, car_number, photo_path, photo_url,
+            email, gender, id_type, organization, address,
             emergency_contact, whatsapp_country_code, whatsapp_number,
             visitor_type, total_visits, blacklisted, created_at, updated_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,0,?,?)`,
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,0,?,?)`,
         [
           visitorId,
           input.fullName,
-          input.mobile,
-          input.email,
-          input.gender,
-          input.idType,
-          input.idNumber,
+          mobileVal,
+          mobileVal,
+          aadhaarVal,
+          aadhaarVal,
+          toInt(hasCarVal),
+          carNumberVal,
           photo.path,
-          input.organization,
-          input.address,
-          input.emergencyContact,
+          photo.path,
+          input.email || "",
+          input.gender || "Prefer not to say",
+          input.idType || "Aadhaar Card",
+          input.organization || "",
+          input.address || "",
+          input.emergencyContact || "",
           whatsappCountryCode,
           whatsappNumber,
-          input.visitorType,
+          input.visitorType || "Guest",
           timestamp,
           timestamp,
         ],
@@ -354,30 +369,36 @@ export function createBooking(
     const id = nextBookingRef();
     run(
       `INSERT INTO visit_requests
-         (id, visitor_id, full_name, mobile, email, gender, organization, address, emergency_contact,
+         (id, visitor_id, full_name, mobile, mobile_number, aadhaar_number, id_number, has_car, car_number, photo_path, photo_url,
+          email, gender, organization, address, emergency_contact,
           whatsapp_country_code, whatsapp_number,
-          visitor_type, id_type, id_number, photo_url, purpose, purpose_detail, host_id, host_name,
+          visitor_type, id_type, purpose, purpose_detail, host_id, host_name,
           department_id, department, visit_date, visit_time, expected_duration, number_of_visitors,
           vehicle_required, vehicle_number, notes, special_requirements, status, source,
           pass_token, pass_expires_at, idempotency_key, created_at, updated_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'Pending',?,?,?,?,?,?)`,
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'Pending',?,?,?,?,?,?)`,
       [
         id,
         visitorId,
         input.fullName,
-        input.mobile,
-        input.email,
-        input.gender,
-        input.organization,
-        input.address,
-        input.emergencyContact,
+        mobileVal,
+        mobileVal,
+        aadhaarVal,
+        aadhaarVal,
+        toInt(hasCarVal),
+        carNumberVal,
+        photo.path,
+        photo.path,
+        input.email || "",
+        input.gender || "Prefer not to say",
+        input.organization || "",
+        input.address || "",
+        input.emergencyContact || "",
         whatsappCountryCode,
         whatsappNumber,
-        input.visitorType,
-        input.idType,
-        input.idNumber,
-        photo.path,
-        input.purpose,
+        input.visitorType || "Guest",
+        input.idType || "Aadhaar Card",
+        input.purpose || "Campus Visit",
         input.purposeDetail ?? null,
         hostId,
         hostName,
@@ -385,15 +406,13 @@ export function createBooking(
         department,
         input.visitDate,
         input.visitTime,
-        input.expectedDuration,
-        input.numberOfVisitors,
-        toInt(input.vehicleRequired),
-        input.vehicleNumber ?? null,
+        input.expectedDuration || "30 minutes",
+        input.numberOfVisitors || 1,
+        toInt(hasCarVal),
+        carNumberVal,
         input.notes ?? null,
         input.specialRequirements ?? null,
         source,
-        // Issued now, not on approval: the visitor leaves with a working QR
-        // code, and scanning it before approval reports the real status.
         randomToken(24),
         passExpiryFor(input.visitDate, input.visitTime, settings.autoExpireHours),
         idempotencyKey,
@@ -405,7 +424,7 @@ export function createBooking(
     // Accompanying visitors belong to the same transaction as the booking —
     // a half-written party is never visible to the gate.
     guests.forEach((guest, index) => {
-      const sealed = sealAadhaar(guest.aadhaar);
+      const sealed = sealAadhaar(guest.aadhaarNumber ?? "");
       run(
         `INSERT INTO visit_guests
            (id, booking_id, position, full_name, mobile, aadhaar_ciphertext, aadhaar_hash,
@@ -416,12 +435,12 @@ export function createBooking(
           id,
           index + 2, // the primary visitor is 1
           guest.fullName,
-          guest.mobile,
+          guest.mobile ?? "",
           sealed.ciphertext,
           sealed.hash,
           sealed.last4,
-          guest.relation,
-          guest.address,
+          guest.relation ?? "",
+          guest.address ?? "",
           timestamp,
           timestamp,
         ],

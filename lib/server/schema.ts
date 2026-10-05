@@ -536,4 +536,59 @@ export const COLUMN_MIGRATIONS: { table: string; column: string; ddl: string }[]
     column: "photo_url",
     ddl: "ALTER TABLE visit_requests ADD COLUMN photo_url TEXT",
   },
+  {
+    table: "visit_requests",
+    column: "purpose_meta",
+    ddl: "ALTER TABLE visit_requests ADD COLUMN purpose_meta TEXT DEFAULT '{}'",
+  },
+  {
+    table: "visitors",
+    column: "aadhaar_number",
+    ddl: "ALTER TABLE visitors ADD COLUMN aadhaar_number TEXT",
+  },
+  {
+    table: "visitors",
+    column: "mobile_number",
+    ddl: "ALTER TABLE visitors ADD COLUMN mobile_number TEXT",
+  },
+  {
+    table: "visitors",
+    column: "has_car",
+    ddl: "ALTER TABLE visitors ADD COLUMN has_car INTEGER DEFAULT 0",
+  },
+  {
+    table: "visitors",
+    column: "car_number",
+    ddl: "ALTER TABLE visitors ADD COLUMN car_number TEXT",
+  },
+  {
+    table: "visitors",
+    column: "photo_path",
+    ddl: "ALTER TABLE visitors ADD COLUMN photo_path TEXT",
+  },
+  {
+    table: "visit_requests",
+    column: "aadhaar_number",
+    ddl: "ALTER TABLE visit_requests ADD COLUMN aadhaar_number TEXT",
+  },
+  {
+    table: "visit_requests",
+    column: "mobile_number",
+    ddl: "ALTER TABLE visit_requests ADD COLUMN mobile_number TEXT",
+  },
+  {
+    table: "visit_requests",
+    column: "has_car",
+    ddl: "ALTER TABLE visit_requests ADD COLUMN has_car INTEGER DEFAULT 0",
+  },
+  {
+    table: "visit_requests",
+    column: "car_number",
+    ddl: "ALTER TABLE visit_requests ADD COLUMN car_number TEXT",
+  },
+  {
+    table: "visit_requests",
+    column: "photo_path",
+    ddl: "ALTER TABLE visit_requests ADD COLUMN photo_path TEXT",
+  },
 ];
