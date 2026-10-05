@@ -19,6 +19,7 @@ import type {
   Teacher,
   TeacherAvailability,
   Vehicle,
+  VisitPurpose,
   VisitRequest,
   VisitStatus,
   Visitor,
@@ -26,6 +27,7 @@ import type {
 import { DEFAULT_AVAILABILITY, toMeetingStatus } from "@/lib/types";
 import type { VisitGuest } from "@/lib/types";
 import { DEFAULT_SETTINGS } from "@/lib/settings";
+import { todayISO } from "@/lib/utils";
 import { all, get, run, toBool, toInt, toJson, toNum, toOptText, toText } from "./db";
 import type { Row } from "./db";
 
@@ -56,20 +58,31 @@ export function mapDepartment(r: Row): Department {
 }
 
 export function mapVisitor(r: Row): Visitor {
+  const mobileVal = toText(r.mobile_number) || toText(r.mobile);
+  const aadhaarVal = toText(r.aadhaar_number) || toText(r.id_number);
+  const photoVal = toOptText(r.photo_path) || toOptText(r.photo_url);
+  const hasCarVal = toBool(r.has_car) || toBool(r.vehicle_required);
+  const carNumVal = toOptText(r.car_number) || toOptText(r.vehicle_number);
+
   return {
     id: toText(r.id),
     fullName: toText(r.full_name),
-    mobile: toText(r.mobile),
-    email: toText(r.email),
-    gender: toText(r.gender) as Visitor["gender"],
-    idType: toText(r.id_type) as Visitor["idType"],
-    idNumber: toText(r.id_number),
-    photoUrl: toOptText(r.photo_url),
-    organization: toText(r.organization),
-    address: toText(r.address),
-    emergencyContact: toText(r.emergency_contact),
-    visitorType: toText(r.visitor_type) as Visitor["visitorType"],
-    totalVisits: toNum(r.total_visits),
+    mobileNumber: mobileVal,
+    mobile: mobileVal,
+    aadhaarNumber: aadhaarVal,
+    idNumber: aadhaarVal,
+    hasCar: hasCarVal,
+    carNumber: carNumVal,
+    photoPath: photoVal,
+    photoUrl: photoVal,
+    email: toOptText(r.email),
+    gender: toOptText(r.gender) as Visitor["gender"],
+    idType: toOptText(r.id_type) as Visitor["idType"],
+    organization: toOptText(r.organization),
+    address: toOptText(r.address),
+    emergencyContact: toOptText(r.emergency_contact),
+    visitorType: toOptText(r.visitor_type) as Visitor["visitorType"],
+    totalVisits: toNum(r.total_visits, 0),
     blacklisted: toBool(r.blacklisted),
     createdAt: toText(r.created_at),
     updatedAt: toText(r.updated_at),
@@ -150,24 +163,36 @@ export function mapStudent(r: Row): Student {
 }
 
 export function mapVisit(r: Row): VisitRequest {
+  const mobileVal = toText(r.mobile_number) || toText(r.mobile);
+  const aadhaarVal = toText(r.aadhaar_number) || toText(r.id_number);
+  const photoVal = toOptText(r.photo_path) || toOptText(r.photo_url);
+  const hasCarVal = toBool(r.has_car) || toBool(r.vehicle_required);
+  const carNumVal = toOptText(r.car_number) || toOptText(r.vehicle_number);
+
   return {
     id: toText(r.id),
     visitorId: toText(r.visitor_id),
     fullName: toText(r.full_name),
-    mobile: toText(r.mobile),
-    email: toText(r.email),
-    gender: toText(r.gender) as VisitRequest["gender"],
-    organization: toText(r.organization),
-    address: toText(r.address),
-    emergencyContact: toText(r.emergency_contact),
+    mobileNumber: mobileVal,
+    mobile: mobileVal,
+    aadhaarNumber: aadhaarVal,
+    idNumber: aadhaarVal,
+    hasCar: hasCarVal,
+    carNumber: carNumVal,
+    photoPath: photoVal,
+    photoUrl: photoVal,
+    email: toOptText(r.email),
+    gender: toOptText(r.gender) as VisitRequest["gender"],
+    organization: toOptText(r.organization),
+    address: toOptText(r.address),
+    emergencyContact: toOptText(r.emergency_contact),
     whatsappCountryCode: toText(r.whatsapp_country_code) || "+91",
     whatsappNumber: toText(r.whatsapp_number),
-    visitorType: toText(r.visitor_type) as VisitRequest["visitorType"],
-    idType: toText(r.id_type) as VisitRequest["idType"],
-    idNumber: toText(r.id_number),
-    photoUrl: toOptText(r.photo_url),
-    purpose: toText(r.purpose) as VisitRequest["purpose"],
+    visitorType: (toOptText(r.visitor_type) || "Guest") as VisitRequest["visitorType"],
+    idType: (toOptText(r.id_type) || "Aadhaar Card") as VisitRequest["idType"],
+    purpose: (toOptText(r.purpose) || "Campus Visit") as VisitRequest["purpose"],
     purposeDetail: toOptText(r.purpose_detail),
+    purposeMeta: toJson(r.purpose_meta, {}),
     hostId: (r.host_id as string | null) ?? null,
     hostName: toText(r.host_name),
     departmentId: (r.department_id as string | null) ?? null,
@@ -176,12 +201,12 @@ export function mapVisit(r: Row): VisitRequest {
     visitTime: toText(r.visit_time),
     expectedDuration: toText(r.expected_duration),
     numberOfVisitors: toNum(r.number_of_visitors, 1),
-    vehicleRequired: toBool(r.vehicle_required),
-    vehicleNumber: toOptText(r.vehicle_number),
+    vehicleRequired: hasCarVal,
+    vehicleNumber: carNumVal,
     notes: toOptText(r.notes),
     specialRequirements: toOptText(r.special_requirements),
-    status: toText(r.status) as VisitStatus,
-    source: toText(r.source) as VisitRequest["source"],
+    status: (toText(r.status) || "Pending") as VisitStatus,
+    source: (toOptText(r.source) || "Visitor Portal") as VisitRequest["source"],
     createdAt: toText(r.created_at),
     updatedAt: toText(r.updated_at),
     decidedAt: toOptText(r.decided_at),
@@ -553,14 +578,15 @@ export function listMeetings(visits: VisitRequest[]): Meeting[] {
       id: `MTG-${v.id.split("-").pop()}`,
       visitRequestId: v.id,
       visitorName: v.fullName,
-      visitorMobile: v.mobile,
-      hostId: v.hostId,
-      hostName: v.hostName,
-      department: v.department,
-      date: v.visitDate,
-      time: v.visitTime,
-      purpose: v.purpose,
-      duration: v.expectedDuration,
+      visitorMobile: v.mobileNumber || v.mobile || "",
+      visitorPhotoUrl: v.photoPath || v.photoUrl,
+      hostId: v.hostId ?? null,
+      hostName: v.hostName || "Front Desk",
+      department: v.department || "General",
+      date: v.visitDate || todayISO(),
+      time: v.visitTime || "09:00",
+      purpose: (v.purpose || "Campus Visit") as VisitPurpose,
+      duration: v.expectedDuration || "30 minutes",
       notes: v.notes,
       status: v.status,
       meetingStatus: toMeetingStatus(v.status),

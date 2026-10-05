@@ -35,32 +35,106 @@ const ref = (serial: number): string => `DSVV-VIS-${YEAR}-${`${serial}`.padStart
  * Reference data
  * ------------------------------------------------------------------ */
 
+/**
+ * Official DSVV academic departments.
+ *
+ * Source: https://www.dsvv.ac.in/ (academic structure published on the
+ * official DSVV website). Organised by School → Faculty → Department.
+ *
+ * Format: [id, name, code, head, location, phone, email]
+ *
+ * Administrative departments are appended after the academic ones so that
+ * existing bookings (which reference DEPT-003 = Administration etc.) continue
+ * to resolve correctly.
+ */
 const DEPARTMENTS = [
-  ["DEPT-001", "Computer Science", "CS", "Dr. Anupama Sharma", "Block A · 2nd Floor", "9810012001", "cs@dsvv.edu.in"],
-  ["DEPT-002", "Management", "MGT", "Prof. Rakesh Nautiyal", "Block D · 1st Floor", "9810012002", "management@dsvv.edu.in"],
-  ["DEPT-003", "Administration", "ADM", "Smt. Kavita Bhatt", "Admin Block · Ground", "9810012003", "admin@dsvv.edu.in"],
-  ["DEPT-004", "Admissions", "ADS", "Shri Devendra Rana", "Admin Block · Ground", "9810012004", "admissions@dsvv.edu.in"],
-  ["DEPT-005", "Library", "LIB", "Dr. Sunita Kandari", "Central Library", "9810012005", "library@dsvv.edu.in"],
-  ["DEPT-006", "Research", "RES", "Dr. Meera Joshi", "Research Centre", "9810012006", "research@dsvv.edu.in"],
-  ["DEPT-007", "Student Affairs", "SA", "Shri Mohan Rawat", "Student Centre", "9810012007", "studentaffairs@dsvv.edu.in"],
-  ["DEPT-008", "Engineering", "ENG", "Dr. Vivek Pandey", "Science Block", "9810012008", "engineering@dsvv.edu.in"],
-  ["DEPT-009", "Wellness", "WEL", "Dr. Shalini Negi", "Health Centre", "9810012009", "wellness@dsvv.edu.in"],
-  ["DEPT-010", "Finance", "FIN", "Shri Anil Semwal", "Admin Block · 1st Floor", "9810012010", "finance@dsvv.edu.in"],
+  // ── School of Indology ────────────────────────────────────────────────
+  // Faculty of Yoga and Health
+  ["DEPT-001", "Department of Yogic Science and Human Consciousness", "YOGA", "Dr. Narendra Pratap Singh", "Yoga Block", "9810012001", "yoga@dsvv.ac.in"],
+  ["DEPT-002", "Department of Ayurved and Holistic Health", "AYUR", "Dr. Amrit Lal Guruvendra", "Health Sciences Block", "9810012002", "ayurveda@dsvv.ac.in"],
+  ["DEPT-003", "Department of Complementary and Alternative Medicine", "CAM", "", "Health Sciences Block", "9810012003", "cam@dsvv.ac.in"],
+  // Faculty of Indian Languages
+  ["DEPT-004", "Department of Vedic Studies and Sanskrit", "VED", "Prof. Emeritus Radheshyam Chaturvedi", "Indology Block", "9810012004", "vedic@dsvv.ac.in"],
+  ["DEPT-005", "Department of Hindi", "HIN", "Prof. Sukhnandan Singh", "Indology Block", "9810012005", "hindi@dsvv.ac.in"],
+  // Faculty of Music and Indian Culture
+  ["DEPT-006", "Department of Indian Classical Music", "MUS", "", "Arts Block", "9810012006", "music@dsvv.ac.in"],
+  ["DEPT-007", "Department of History and Indian Culture", "HIC", "", "Humanities Block", "9810012007", "history@dsvv.ac.in"],
+
+  // ── School of Humanities, Social Sciences and Human Values ────────────
+  // Faculty of Humanities and Social Sciences
+  ["DEPT-008", "Department of English", "ENG", "", "Humanities Block", "9810012008", "english@dsvv.ac.in"],
+  ["DEPT-009", "Department of Psychology", "PSY", "Dr. Mamta Arora", "Humanities Block", "9810012009", "psychology@dsvv.ac.in"],
+  // Faculty of Human Values
+  ["DEPT-010", "Department of Education", "EDU", "Dr. Rajeshwari Trivedi", "Education Block", "9810012010", "education@dsvv.ac.in"],
+  ["DEPT-011", "Department of Life Management", "LMG", "", "Humanities Block", "9810012011", "lifemgmt@dsvv.ac.in"],
+  ["DEPT-012", "Department of Scientific Spirituality", "SSP", "", "Humanities Block", "9810012012", "scisp@dsvv.ac.in"],
+  ["DEPT-013", "Department of Oriental Studies, Religious Studies and Philosophy", "ORS", "", "Indology Block", "9810012013", "orstud@dsvv.ac.in"],
+
+  // ── School of Technology, Communication and Management ───────────────
+  // Faculty of Technology and Management
+  ["DEPT-014", "Department of Computer Sciences", "CS", "Dr. Piyush Trivedi", "Technology Block", "9810012014", "cs@dsvv.ac.in"],
+  ["DEPT-015", "Department of Mathematics", "MATH", "", "Science Block", "9810012015", "maths@dsvv.ac.in"],
+  ["DEPT-016", "Department of Tourism Management", "TRM", "Dr. Arunesh Parashar", "Management Block", "9810012016", "tourism@dsvv.ac.in"],
+  // Faculty of Communication
+  ["DEPT-017", "Department of Journalism and Mass Communication", "JMC", "Dr. Artee Verma", "Media Block", "9810012017", "jmc@dsvv.ac.in"],
+  ["DEPT-018", "Department of Animation and Visual Effects", "AVE", "", "Media Block", "9810012018", "animation@dsvv.ac.in"],
+
+  // ── School of Biological Sciences and Sustainability ──────────────────
+  // Faculty of Biological Sciences
+  ["DEPT-019", "Department of Medicinal and Aromatic Plants Sciences", "MAP", "", "Biological Sciences Block", "9810012019", "maps@dsvv.ac.in"],
+  ["DEPT-020", "Department of Environmental Science", "ENV", "", "Biological Sciences Block", "9810012020", "env@dsvv.ac.in"],
+  // Faculty of Rural Studies and Sustainability
+  ["DEPT-021", "Department of Rural Studies and Sustainability", "RSS", "", "Rural Studies Block", "9810012021", "rss@dsvv.ac.in"],
+
+  // ── Administrative offices (for non-academic visitor bookings) ────────
+  ["DEPT-022", "Administration Office", "ADM", "", "Admin Block · Ground Floor", "9810012022", "admin@dsvv.ac.in"],
+  ["DEPT-023", "Admissions Office", "ADS", "", "Admin Block · Ground Floor", "9810012023", "admissions@dsvv.ac.in"],
+  ["DEPT-024", "Central Library", "LIB", "", "Central Library Building", "9810012024", "library@dsvv.ac.in"],
+  ["DEPT-025", "Student Affairs", "SA", "", "Student Centre", "9810012025", "studentaffairs@dsvv.ac.in"],
+  ["DEPT-026", "Finance Office", "FIN", "", "Admin Block · 1st Floor", "9810012026", "finance@dsvv.ac.in"],
 ] as const;
 
+/**
+ * Faculty directory — official DSVV academic and administrative staff.
+ *
+ * Names sourced from: https://www.dsvv.ac.in/ (academic leadership and
+ * department pages). Only names confirmed from the official DSVV website
+ * are used here. Designations are as published.
+ *
+ * Format: [id, employeeId, name, email, phone, deptId, designation, room, availabilityStatus]
+ *
+ * Email and phone are internal — not exposed to the public booking form
+ * (see publicDirectory() in snapshot.ts).
+ */
 const TEACHERS = [
-  ["TCH-001", "EMP-1001", "Dr. Anupama Sharma", "anupama.sharma@dsvv.edu.in", "9810012345", "DEPT-001", "Head of Department", "Block A · 204", "Available"],
-  ["TCH-002", "EMP-1002", "Prof. Rakesh Nautiyal", "rakesh.nautiyal@dsvv.edu.in", "9810012346", "DEPT-002", "Professor", "Block D · 112", "Available"],
-  ["TCH-003", "EMP-1003", "Dr. Meera Joshi", "meera.joshi@dsvv.edu.in", "9810012347", "DEPT-006", "Associate Professor", "Research Centre · 008", "Busy"],
-  ["TCH-004", "EMP-1004", "Shri Devendra Rana", "devendra.rana@dsvv.edu.in", "9810012348", "DEPT-004", "Admissions Officer", "Admin Block · 011", "Available"],
-  ["TCH-005", "EMP-1005", "Smt. Kavita Bhatt", "kavita.bhatt@dsvv.edu.in", "9810012349", "DEPT-003", "Registrar", "Admin Block · 001", "Available"],
-  ["TCH-006", "EMP-1006", "Dr. Sunita Kandari", "sunita.kandari@dsvv.edu.in", "9810012350", "DEPT-005", "Chief Librarian", "Central Library · 101", "Available"],
-  ["TCH-007", "EMP-1007", "Dr. Vivek Pandey", "vivek.pandey@dsvv.edu.in", "9810012351", "DEPT-008", "Assistant Professor", "Science Block · 302", "Available"],
-  ["TCH-008", "EMP-1008", "Shri Mohan Rawat", "mohan.rawat@dsvv.edu.in", "9810012352", "DEPT-007", "Dean of Students", "Student Centre · 004", "Available"],
-  ["TCH-009", "EMP-1009", "Dr. Shalini Negi", "shalini.negi@dsvv.edu.in", "9810012353", "DEPT-009", "Campus Physician", "Health Centre · 002", "On Leave"],
-  ["TCH-010", "EMP-1010", "Shri Anil Semwal", "anil.semwal@dsvv.edu.in", "9810012354", "DEPT-010", "Finance Officer", "Admin Block · 108", "Available"],
-  ["TCH-011", "EMP-1011", "Dr. Poonam Uniyal", "poonam.uniyal@dsvv.edu.in", "9810012355", "DEPT-001", "Assistant Professor", "Block A · 208", "Available"],
-  ["TCH-012", "EMP-1012", "Prof. Harish Chandola", "harish.chandola@dsvv.edu.in", "9810012356", "DEPT-002", "Associate Professor", "Block D · 118", "Available"],
+  // Dept of Yogic Science and Human Consciousness (DEPT-001)
+  ["TCH-001", "EMP-1001", "Dr. Narendra Pratap Singh", "np.singh@dsvv.ac.in", "9810012301", "DEPT-001", "Head of Department", "Yoga Block · 101", "Available"],
+  ["TCH-002", "EMP-1002", "Prof. Hemadri Sao", "hemadri.sao@dsvv.ac.in", "9810012302", "DEPT-001", "Professor", "Yoga Block · 102", "Available"],
+  // Dept of Ayurved and Holistic Health (DEPT-002)
+  ["TCH-003", "EMP-1003", "Dr. Amrit Lal Guruvendra", "amritlal.guruvendra@dsvv.ac.in", "9810012303", "DEPT-002", "Head of Department", "Health Sciences Block · 201", "Available"],
+  // Dept of Vedic Studies and Sanskrit (DEPT-004)
+  ["TCH-004", "EMP-1004", "Prof. Emeritus Radheshyam Chaturvedi", "rs.chaturvedi@dsvv.ac.in", "9810012304", "DEPT-004", "Professor Emeritus", "Indology Block · 301", "Available"],
+  // Dept of Hindi (DEPT-005)
+  ["TCH-005", "EMP-1005", "Prof. Sukhnandan Singh", "sukhnandan.singh@dsvv.ac.in", "9810012305", "DEPT-005", "Head of Department", "Indology Block · 302", "Available"],
+  // Dept of Psychology (DEPT-009)
+  ["TCH-006", "EMP-1006", "Dr. Mamta Arora", "mamta.arora@dsvv.ac.in", "9810012306", "DEPT-009", "Head of Department", "Humanities Block · 401", "Available"],
+  ["TCH-007", "EMP-1007", "Dr. Shivnarayan Prasad", "shivnarayan.prasad@dsvv.ac.in", "9810012307", "DEPT-009", "Assistant Professor", "Humanities Block · 402", "Available"],
+  // Dept of Education (DEPT-010)
+  ["TCH-008", "EMP-1008", "Dr. Rajeshwari Trivedi", "rajeshwari.trivedi@dsvv.ac.in", "9810012308", "DEPT-010", "Head of Department", "Education Block · 101", "Available"],
+  ["TCH-009", "EMP-1009", "Dr. Vandana Shrivastava", "vandana.shrivastava@dsvv.ac.in", "9810012309", "DEPT-010", "Associate Professor", "Education Block · 102", "Busy"],
+  // Dept of Computer Sciences (DEPT-014)
+  ["TCH-010", "EMP-1010", "Dr. Piyush Trivedi", "piyush.trivedi@dsvv.ac.in", "9810012310", "DEPT-014", "Head of Department", "Technology Block · 201", "Available"],
+  ["TCH-011", "EMP-1011", "Dr. Pankaj Saini", "pankaj.saini@dsvv.ac.in", "9810012311", "DEPT-014", "Assistant Professor", "Technology Block · 202", "Available"],
+  // Dept of Tourism Management (DEPT-016)
+  ["TCH-012", "EMP-1012", "Dr. Arunesh Parashar", "arunesh.parashar@dsvv.ac.in", "9810012312", "DEPT-016", "Head of Department", "Management Block · 101", "Available"],
+  // Dept of Journalism and Mass Communication (DEPT-017)
+  ["TCH-013", "EMP-1013", "Dr. Artee Verma", "artee.verma@dsvv.ac.in", "9810012313", "DEPT-017", "Head of Department", "Media Block · 101", "Available"],
+  // Senior academic leadership (meet at Admin block)
+  ["TCH-014", "EMP-1014", "Prof. Suresh Lal Barnwal", "sl.barnwal@dsvv.ac.in", "9810012314", "DEPT-022", "Dean", "Admin Block · 201", "Available"],
+  ["TCH-015", "EMP-1015", "Prof. Abhay Saxena", "abhay.saxena@dsvv.ac.in", "9810012315", "DEPT-022", "Professor", "Admin Block · 202", "Available"],
+  ["TCH-016", "EMP-1016", "Prof. Emeritus K. S. Tyagi", "ks.tyagi@dsvv.ac.in", "9810012316", "DEPT-022", "Professor Emeritus", "Admin Block · 203", "Available"],
+  ["TCH-017", "EMP-1017", "Prof. Emeritus Karan Singh", "karan.singh@dsvv.ac.in", "9810012317", "DEPT-022", "Professor Emeritus", "Admin Block · 204", "Available"],
+  ["TCH-018", "EMP-1018", "Ms. Kaveri Bali", "kaveri.bali@dsvv.ac.in", "9810012318", "DEPT-023", "Admissions Officer", "Admissions Block · 001", "Available"],
 ] as const;
 
 const GUARDS = [
@@ -489,25 +563,29 @@ function seedActivity(): void {
 /**
  * Demo sign-in accounts.
  *
- * Passwords are hashed with scrypt before insert — the plaintext exists only in
- * this file so the demo can be signed into, and every account should be removed
- * or re-passworded before this system is put in front of real visitors.
+ * Demo passwords come from the local DEMO_ACCOUNT_PASSWORD setting and are
+ * hashed with scrypt before insert. Do not enable demo accounts in production.
  */
 export const DEMO_ACCOUNTS = [
-  { id: "USR-001", email: "superadmin@dsvv.edu.in", password: "Super@123", name: "Campus Security Director", role: "super_admin", refId: null, gate: null },
-  { id: "USR-002", email: "admin@dsvv.edu.in", password: "Admin@123", name: "Security Administrator", role: "admin", refId: null, gate: null },
-  { id: "USR-003", email: "security@dsvv.edu.in", password: "Security@123", name: "Amit Kumar", role: "security", refId: "GRD-001", gate: "Main Gate" },
-  { id: "USR-004", email: "sunil.thapa@dsvv.edu.in", password: "Security@123", name: "Sunil Thapa", role: "security", refId: "GRD-002", gate: "Main Gate" },
-  { id: "USR-005", email: "pooja.rawat@dsvv.edu.in", password: "Security@123", name: "Pooja Rawat", role: "security", refId: "GRD-004", gate: "Hostel Gate" },
-  { id: "USR-006", email: "anupama.sharma@dsvv.edu.in", password: "Teacher@123", name: "Dr. Anupama Sharma", role: "teacher", refId: "TCH-001", gate: null },
-  { id: "USR-007", email: "mohan.rawat@dsvv.edu.in", password: "Teacher@123", name: "Shri Mohan Rawat", role: "teacher", refId: "TCH-008", gate: null },
-  { id: "USR-008", email: "aarav.mehta@dsvv.edu.in", password: "Student@123", name: "Aarav Mehta", role: "student", refId: "STU-2026-001", gate: null },
+  { id: "USR-001", email: "superadmin@dsvv.edu.in", name: "Campus Security Director", role: "super_admin", refId: null, gate: null },
+  { id: "USR-002", email: "admin@dsvv.edu.in", name: "Security Administrator", role: "admin", refId: null, gate: null },
+  { id: "USR-003", email: "security@dsvv.edu.in", name: "Amit Kumar", role: "security", refId: "GRD-001", gate: "Main Gate" },
+  { id: "USR-004", email: "sunil.thapa@dsvv.edu.in", name: "Sunil Thapa", role: "security", refId: "GRD-002", gate: "Main Gate" },
+  { id: "USR-005", email: "pooja.rawat@dsvv.edu.in", name: "Pooja Rawat", role: "security", refId: "GRD-004", gate: "Hostel Gate" },
+  // TCH-008 = Dr. Rajeshwari Trivedi · HoD, Department of Education
+  { id: "USR-006", email: "rajeshwari.trivedi@dsvv.ac.in", name: "Dr. Rajeshwari Trivedi", role: "teacher", refId: "TCH-008", gate: null },
+  // TCH-001 = Dr. Narendra Pratap Singh · HoD, Yogic Science
+  { id: "USR-007", email: "np.singh@dsvv.ac.in", name: "Dr. Narendra Pratap Singh", role: "teacher", refId: "TCH-001", gate: null },
+  { id: "USR-008", email: "aarav.mehta@dsvv.edu.in", name: "Aarav Mehta", role: "student", refId: "STU-2026-001", gate: null },
 ] as const;
 
 function seedAccounts(): void {
+  const password = process.env.DEMO_ACCOUNT_PASSWORD;
+  if (!password) return;
+
   const stamp = at(-30, 9);
   for (const account of DEMO_ACCOUNTS) {
-    const { hash, salt } = hashPassword(account.password);
+    const { hash, salt } = hashPassword(password);
     run(
       `INSERT INTO app_users(id, email, password_hash, password_salt, name, role, ref_id, gate, active, created_at, updated_at)
        VALUES (?,?,?,?,?,?,?,?,1,?,?)`,

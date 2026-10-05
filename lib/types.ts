@@ -162,12 +162,21 @@ export const PUBLIC_VISIT_PURPOSES: VisitPurpose[] = [
   "Other",
 ];
 
+export interface PurposeMeta {
+  studentName?: string;
+  parentGuardianName?: string;
+  courseClass?: string;
+  academicSession?: string;
+  studentClass?: string;
+  studentRollNo?: string;
+  designation?: string;
+  eventName?: string;
+  eventLocation?: string;
+}
+
 /** Purposes where a specific host must be chosen before the slot step. */
 export const HOST_REQUIRED_PURPOSES: VisitPurpose[] = [
   "Teacher Meeting",
-  "Student Meeting",
-  "Parent Visit",
-  "Admission Inquiry",
 ];
 
 export type Gender = "Male" | "Female" | "Other" | "Prefer not to say";
@@ -215,22 +224,26 @@ export interface Department {
   updatedAt: string;
 }
 
-/** A person who has visited or requested to visit the campus. */
 export interface Visitor {
   id: string; // VSTR-0001
   fullName: string;
+  mobileNumber: string;
   mobile: string;
-  email: string;
-  gender: Gender;
-  idType: IdProofType;
+  aadhaarNumber: string;
   idNumber: string;
+  hasCar: boolean;
+  carNumber?: string;
+  photoPath?: string;
   photoUrl?: string;
-  organization: string;
-  address: string;
-  emergencyContact: string;
-  visitorType: VisitorType;
-  totalVisits: number;
-  blacklisted: boolean;
+  email?: string;
+  gender?: Gender;
+  idType?: IdProofType;
+  organization?: string;
+  address?: string;
+  emergencyContact?: string;
+  visitorType?: VisitorType;
+  totalVisits?: number;
+  blacklisted?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -403,46 +416,48 @@ export interface VisitRequest {
   id: string; // DSVV-VIS-2026-000124
   visitorId: string;
 
-  // Step 1 — visitor details
+  // Primary Visitor Information
   fullName: string;
+  aadhaarNumber: string;
+  mobileNumber: string;
   mobile: string;
-  email: string;
-  gender: Gender;
-  organization: string;
-  address: string;
-  emergencyContact: string;
-  visitorType: VisitorType;
-  idType: IdProofType;
-  idNumber: string;
+  hasCar: boolean;
+  carNumber?: string;
+  photoPath?: string;
   photoUrl?: string;
-  /** Dialling code for the WhatsApp contact, e.g. `+91`. */
-  whatsappCountryCode?: string;
-  /** Local WhatsApp number. Private — masked outside admin and gate roles. */
-  whatsappNumber?: string;
 
-  // Steps 2 and 3 — purpose and host
+  // Core Schedule & Source
+  visitDate: string;
+  visitTime: string;
   purpose: VisitPurpose;
+  source: "Visitor Portal" | "Walk-in" | "Security Desk";
+
+  // Legacy/Compatibility fields
+  idNumber?: string;
+  email?: string;
+  gender?: Gender;
+  organization?: string;
+  address?: string;
+  emergencyContact?: string;
+  visitorType?: VisitorType;
+  idType?: IdProofType;
+  whatsappCountryCode?: string;
+  whatsappNumber?: string;
   purposeDetail?: string;
-  hostId: string | null;
-  hostName: string;
-  departmentId: string | null;
-  department: string;
-
-  // Step 4 — schedule
-  visitDate: string; // yyyy-mm-dd
-  visitTime: string; // HH:mm (24h)
-  expectedDuration: ExpectedDuration | string;
-
-  // Step 5 — additional information
-  numberOfVisitors: number;
-  vehicleRequired: boolean;
+  purposeMeta?: PurposeMeta;
+  hostId?: string | null;
+  hostName?: string;
+  departmentId?: string | null;
+  department?: string;
+  expectedDuration?: ExpectedDuration | string;
+  numberOfVisitors?: number;
+  vehicleRequired?: boolean;
   vehicleNumber?: string;
   notes?: string;
   specialRequirements?: string;
 
   // Lifecycle
   status: VisitStatus;
-  source: "Visitor Portal" | "Walk-in" | "Security Desk";
   createdAt: string;
   updatedAt: string;
   decidedAt?: string;

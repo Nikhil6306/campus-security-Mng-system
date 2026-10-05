@@ -1,0 +1,656 @@
+// Prisma Schema for DSVV Campus Security Management System
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ---------------------------------------------------------
+// ENUMS
+// ---------------------------------------------------------
+
+enum AppRoleName {
+  SUPER_ADMIN
+  ADMIN
+  SECURITY_ADMIN
+  SECURITY_OFFICER
+  GATE_GUARD
+  RECEPTION
+  FACULTY
+  STAFF
+  STUDENT
+  VISITOR
+}
+
+enum VisitorStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CHECKED_IN
+  CHECKED_OUT
+  CANCELLED
+  EXPIRED
+}
+
+enum GateKind {
+  GATE
+  BLOCK
+  HOSTEL
+  FACILITY
+}
+
+enum GateStatus {
+  OPEN
+  CLOSED
+  MAINTENANCE
+}
+
+enum GuardShiftType {
+  MORNING
+  EVENING
+  NIGHT
+  GENERAL
+}
+
+enum GuardStatus {
+  ACTIVE
+  ON_DUTY
+  OFF_DUTY
+  ON_LEAVE
+  SUSPENDED
+}
+
+enum IncidentSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum IncidentStatus {
+  OPEN
+  INVESTIGATING
+  RESOLVED
+  CLOSED
+}
+
+enum QrPassStatus {
+  ACTIVE
+  USED
+  EXPIRED
+  REVOKED
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  READ
+}
+
+enum VehicleType {
+  CAR
+  BIKE
+  SCOOTER
+  BUS
+  OTHER
+}
+
+enum VehicleStatus {
+  INSIDE
+  EXITED
+}
+
+// ---------------------------------------------------------
+// AUTHENTICATION & RBAC
+// ---------------------------------------------------------
+
+model User {
+  id            String         @id @default(uuid())
+  email         String         @unique
+  passwordHash  String         @map("password_hash")
+  fullName      String         @map("full_name")
+  phone         String?
+  refId         String?        @map("ref_id")
+  gate          String?
+  isActive      Boolean        @default(true) @map("is_active")
+  lastLoginAt   DateTime?      @map("last_login_at")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+
+  // Relationships
+  userRoles     UserRole[]
+  refreshTokens RefreshToken[]
+  sessions      Session[]
+  auditLogs     AuditLog[]     @relation("UserAuditLogs")
+  notifications Notification[]
+  reportedIncidents SecurityIncident[] @relation("ReportedIncidents")
+  assignedIncidents SecurityIncident[] @relation("AssignedIncidents")
+  incidentComments IncidentComment[]
+
+  visitorProfile VisitorProfile?
+  facultyProfile Faculty?
+  guardProfile   SecurityGuard?
+
+  @@index([email])
+  @@index([refId])
+  @@map("users")
+}
+
+model Role {
+  id          String         @id @default(uuid())
+  name        AppRoleName    @unique
+  description String?
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+
+  userRoles       UserRole[]
+  rolePermissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String   @id @default(uuid())
+  action      String   @unique // e.g., 'visitors:create', 'gates:manage'
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model UserRole {
+  userId String @map("user_id")
+  roleId String @map("role_id")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+model RolePermission {
+  roleId       String @map("role_id")
+  permissionId String @map("permission_id")
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  tokenHash String   @unique @map("token_hash")
+  isRevoked Boolean  @default(false) @map("is_revoked")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+// ---------------------------------------------------------
+// VISITOR & REQUESTS
+// ---------------------------------------------------------
+
+model VisitorProfile {
+  id                  String   @id @default(uuid())
+  userId              String?  @unique @map("user_id")
+  fullName            String   @map("full_name")
+  mobile              String   @unique
+  email               String?
+  gender              String?  @default("Prefer not to say")
+  idType              String   @map("id_type")
+  idNumber            String   @map("id_number")
+  photoUrl            String?  @map("photo_url")
+  organization        String?
+  address             String?
+  emergencyContact    String?  @map("emergency_contact")
+  whatsappCountryCode String   @default("+91") @map("whatsapp_country_code")
+  whatsappNumber      String   @default("") @map("whatsapp_number")
+  visitorType         String   @default("Guest") @map("visitor_type")
+  totalVisits         Int      @default(0) @map("total_visits")
+  blacklisted         Boolean  @default(false)
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  user            User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  visitorRequests VisitorRequest[]
+  documents       VisitorDocument[]
+
+  @@index([fullName])
+  @@index([mobile])
+  @@map("visitor_profiles")
+}
+
+model VisitorDocument {
+  id          String   @id @default(uuid())
+  visitorId   String   @map("visitor_id")
+  docType     String   @map("doc_type")
+  fileUrl     String   @map("file_url")
+  verified    Boolean  @default(false)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  visitor VisitorProfile @relation(fields: [visitorId], references: [id], onDelete: Cascade)
+
+  @@map("visitor_documents")
+}
+
+model VisitorRequest {
+  id                 String        @id @default(uuid())
+  customCode         String        @unique @map("custom_code") // e.g. DSVV-VIS-2026-0001
+  visitorId          String        @map("visitor_id")
+  fullName           String        @map("full_name")
+  mobile             String
+  email              String?
+  gender             String?       @default("Prefer not to say")
+  organization       String?
+  address            String?
+  emergencyContact   String?       @map("emergency_contact")
+  visitorType        String        @map("visitor_type")
+  idType             String        @map("id_type")
+  idNumber           String        @map("id_number")
+  photoUrl           String?       @map("photo_url")
+  purpose            String
+  purposeDetail      String?       @map("purpose_detail")
+  hostId             String?       @map("host_id")
+  hostName           String?       @map("host_name")
+  departmentId       String?       @map("department_id")
+  departmentName     String?       @map("department_name")
+  visitDate          DateTime      @map("visit_date") @db.Date
+  visitTime          String        @map("visit_time")
+  expectedDuration   String        @default("30 minutes") @map("expected_duration")
+  numberOfVisitors   Int           @default(1) @map("number_of_visitors")
+  vehicleRequired    Boolean       @default(false) @map("vehicle_required")
+  vehicleNumber      String?       @map("vehicle_number")
+  notes              String?
+  specialRequirements String?      @map("special_requirements")
+  status             VisitorStatus @default(PENDING)
+  passToken          String?       @unique @map("pass_token")
+  rejectionReason    String?       @map("rejection_reason")
+  createdAt          DateTime      @default(now()) @map("created_at")
+  updatedAt          DateTime      @updatedAt @map("updated_at")
+
+  visitor          VisitorProfile    @relation(fields: [visitorId], references: [id], onDelete: Cascade)
+  host             Faculty?          @relation(fields: [hostId], references: [id], onDelete: SetNull)
+  department       Department?       @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  appointments     Appointment[]
+  visitorApprovals VisitorApproval[]
+  qrPasses         QrPass[]
+  gateEntries      GateEntry[]
+  gateExits        GateExit[]
+
+  @@index([status])
+  @@index([visitDate])
+  @@index([visitorId])
+  @@map("visitor_requests")
+}
+
+model VisitorApproval {
+  id               String   @id @default(uuid())
+  visitorRequestId String   @map("visitor_request_id")
+  approvedById     String?  @map("approved_by_id")
+  status           String   // APPROVED or REJECTED
+  remarks          String?
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  request VisitorRequest @relation(fields: [visitorRequestId], references: [id], onDelete: Cascade)
+
+  @@map("visitor_approvals")
+}
+
+model Appointment {
+  id               String   @id @default(uuid())
+  visitorRequestId String   @map("visitor_request_id")
+  hostFacultyId    String   @map("host_faculty_id")
+  scheduledDate    DateTime @map("scheduled_date") @db.Date
+  scheduledTime    String   @map("scheduled_time")
+  durationMinutes  Int      @default(30) @map("duration_minutes")
+  status           String   @default("CONFIRMED")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  request VisitorRequest @relation(fields: [visitorRequestId], references: [id], onDelete: Cascade)
+  faculty Faculty        @relation(fields: [hostFacultyId], references: [id], onDelete: Cascade)
+
+  @@map("appointments")
+}
+
+// ---------------------------------------------------------
+// ACADEMIC & DIRECTORY
+// ---------------------------------------------------------
+
+model Department {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  name        String   @unique
+  school      String?
+  description String?
+  headName    String?  @map("head_name")
+  location    String?
+  phone       String?
+  email       String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  faculties       Faculty[]
+  visitorRequests VisitorRequest[]
+
+  @@map("departments")
+}
+
+model Faculty {
+  id                 String   @id @default(uuid())
+  userId             String?  @unique @map("user_id")
+  employeeCode       String   @unique @map("employee_code")
+  name               String
+  email              String
+  phone              String
+  departmentId       String?  @map("department_id")
+  designation        String?
+  school             String?
+  profileUrl         String?  @map("profile_url")
+  photoUrl           String?  @map("photo_url")
+  room               String?
+  availabilityStatus String   @default("Available") @map("availability_status")
+  isActive           Boolean  @default(true) @map("is_active")
+  sortOrder          Int      @default(0) @map("sort_order")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  user            User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  department      Department?      @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  visitorRequests VisitorRequest[]
+  appointments    Appointment[]
+
+  @@index([departmentId])
+  @@map("faculties")
+}
+
+// ---------------------------------------------------------
+// CAMPUS, GATES & MOVEMENTS
+// ---------------------------------------------------------
+
+model Campus {
+  id        String     @id @default(uuid())
+  name      String     @unique
+  code      String     @unique
+  address   String?
+  isActive  Boolean    @default(true) @map("is_active")
+  createdAt DateTime   @default(now()) @map("created_at")
+
+  buildings Building[]
+
+  @@map("campuses")
+}
+
+model Building {
+  id        String   @id @default(uuid())
+  campusId  String   @map("campus_id")
+  name      String
+  code      String
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  campus Campus @relation(fields: [campusId], references: [id], onDelete: Cascade)
+  gates  Gate[]
+
+  @@map("buildings")
+}
+
+model Gate {
+  id         String     @id @default(uuid())
+  buildingId String?    @map("building_id")
+  name       String     @unique
+  code       String     @unique
+  location   String?
+  kind       GateKind   @default(GATE)
+  status     GateStatus @default(OPEN)
+  isActive   Boolean    @default(true) @map("is_active")
+  createdAt  DateTime   @default(now()) @map("created_at")
+
+  building      Building?      @relation(fields: [buildingId], references: [id], onDelete: SetNull)
+  entries       GateEntry[]
+  exits         GateExit[]
+  guardShifts   GuardShift[]
+  assignedGuards SecurityGuard[]
+
+  @@map("gates")
+}
+
+model GateEntry {
+  id               String   @id @default(uuid())
+  gateId           String   @map("gate_id")
+  visitorRequestId String   @map("visitor_request_id")
+  guardId          String?  @map("guard_id")
+  entryTime        DateTime @default(now()) @map("entry_time")
+  note             String?
+
+  gate    Gate           @relation(fields: [gateId], references: [id], onDelete: Cascade)
+  request VisitorRequest @relation(fields: [visitorRequestId], references: [id], onDelete: Cascade)
+  guard   SecurityGuard? @relation(fields: [guardId], references: [id], onDelete: SetNull)
+
+  @@index([gateId])
+  @@index([entryTime])
+  @@map("gate_entries")
+}
+
+model GateExit {
+  id               String   @id @default(uuid())
+  gateId           String   @map("gate_id")
+  visitorRequestId String   @map("visitor_request_id")
+  guardId          String?  @map("guard_id")
+  exitTime         DateTime @default(now()) @map("exit_time")
+  note             String?
+
+  gate    Gate           @relation(fields: [gateId], references: [id], onDelete: Cascade)
+  request VisitorRequest @relation(fields: [visitorRequestId], references: [id], onDelete: Cascade)
+  guard   SecurityGuard? @relation(fields: [guardId], references: [id], onDelete: SetNull)
+
+  @@index([gateId])
+  @@index([exitTime])
+  @@map("gate_exits")
+}
+
+// ---------------------------------------------------------
+// VEHICLES
+// ---------------------------------------------------------
+
+model Vehicle {
+  id            String        @id @default(uuid())
+  vehicleNumber String        @map("vehicle_number")
+  vehicleType   VehicleType   @map("vehicle_type")
+  ownerName     String        @map("owner_name")
+  status        VehicleStatus @default(INSIDE)
+  createdAt     DateTime      @default(now()) @map("created_at")
+
+  entries VehicleEntry[]
+
+  @@index([vehicleNumber])
+  @@map("vehicles")
+}
+
+model VehicleEntry {
+  id        String    @id @default(uuid())
+  vehicleId String    @map("vehicle_id")
+  gateName  String    @map("gate_name")
+  entryTime DateTime  @default(now()) @map("entry_time")
+  exitTime  DateTime? @map("exit_time")
+  status    String    @default("INSIDE")
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@map("vehicle_entries")
+}
+
+// ---------------------------------------------------------
+// GUARDS & SHIFTS
+// ---------------------------------------------------------
+
+model SecurityGuard {
+  id               String      @id @default(uuid())
+  userId           String?     @unique @map("user_id")
+  employeeCode     String      @unique @map("employee_code")
+  fullName         String      @map("full_name")
+  phone            String
+  email            String?
+  assignedGateId   String?     @map("assigned_gate_id")
+  shift            GuardShiftType @default(MORNING)
+  status           GuardStatus @default(ACTIVE)
+  emergencyContact String?     @map("emergency_contact")
+  createdAt        DateTime    @default(now()) @map("created_at")
+
+  user         User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  assignedGate Gate?       @relation(fields: [assignedGateId], references: [id], onDelete: SetNull)
+  shifts       GuardShift[]
+  entries      GateEntry[]
+  exits        GateExit[]
+
+  @@map("security_guards")
+}
+
+model GuardShift {
+  id        String    @id @default(uuid())
+  guardId   String    @map("guard_id")
+  gateId    String    @map("gate_id")
+  startTime DateTime  @map("start_time")
+  endTime   DateTime? @map("end_time")
+  status    String    @default("ACTIVE") // ACTIVE, COMPLETED, CANCELLED
+
+  guard SecurityGuard @relation(fields: [guardId], references: [id], onDelete: Cascade)
+  gate  Gate          @relation(fields: [gateId], references: [id], onDelete: Cascade)
+
+  @@map("guard_shifts")
+}
+
+// ---------------------------------------------------------
+// INCIDENTS
+// ---------------------------------------------------------
+
+model SecurityIncident {
+  id           String           @id @default(uuid())
+  title        String
+  description  String
+  severity     IncidentSeverity @default(MEDIUM)
+  category     String           @default("Security")
+  location     String
+  reportedById String?          @map("reported_by_id")
+  assignedToId String?          @map("assigned_to_id")
+  status       IncidentStatus   @default(OPEN)
+  resolvedAt   DateTime?        @map("resolved_at")
+  createdAt    DateTime         @default(now()) @map("created_at")
+  updatedAt    DateTime         @updatedAt @map("updated_at")
+
+  reportedBy User?             @relation("ReportedIncidents", fields: [reportedById], references: [id], onDelete: SetNull)
+  assignedTo User?             @relation("AssignedIncidents", fields: [assignedToId], references: [id], onDelete: SetNull)
+  comments   IncidentComment[]
+
+  @@index([status])
+  @@index([severity])
+  @@map("security_incidents")
+}
+
+model IncidentComment {
+  id         String   @id @default(uuid())
+  incidentId String   @map("incident_id")
+  authorId   String   @map("author_id")
+  comment    String
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  incident SecurityIncident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  author   User             @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@map("incident_comments")
+}
+
+// ---------------------------------------------------------
+// QR PASSES
+// ---------------------------------------------------------
+
+model QrPass {
+  id               String       @id @default(uuid())
+  passId           String       @unique @map("pass_id") // Secure random token
+  visitorRequestId String       @map("visitor_request_id")
+  issuedAt         DateTime     @default(now()) @map("issued_at")
+  expiresAt        DateTime     @map("expires_at")
+  status           QrPassStatus @default(ACTIVE)
+  revokedAt        DateTime?    @map("revoked_at")
+
+  request VisitorRequest @relation(fields: [visitorRequestId], references: [id], onDelete: Cascade)
+
+  @@index([passId])
+  @@map("qr_passes")
+}
+
+// ---------------------------------------------------------
+// NOTIFICATIONS & AUDIT LOGS & SETTINGS
+// ---------------------------------------------------------
+
+model Notification {
+  id        String             @id @default(uuid())
+  userId    String?            @map("user_id")
+  type      String
+  title     String
+  message   String
+  href      String?
+  status    NotificationStatus @default(PENDING)
+  read      Boolean            @default(false)
+  createdAt DateTime           @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  actorUserId String?  @map("actor_user_id")
+  action      String
+  entityType  String   @map("entity_type")
+  entityId    String   @map("entity_id")
+  metadata    Json?
+  ipAddress   String?  @map("ip_address")
+  userAgent   String?  @map("user_agent")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  actorUser User? @relation("UserAuditLogs", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([action])
+  @@map("audit_logs")
+}
+
+model SystemSetting {
+  id        String   @id @default("default")
+  data      Json
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("system_settings")
+}

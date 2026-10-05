@@ -234,9 +234,9 @@ export const notificationService = {
   sendCheckIn(booking: VisitRequest): void {
     dispatch({
       channel: "push",
-      to: booking.hostName,
+      to: booking.hostName || "Front Desk",
       subject: `Visitor arrived — ${booking.fullName}`,
-      body: `${booking.fullName} checked in at ${booking.gate ?? "the gate"} for your ${booking.visitTime} meeting.`,
+      body: `${booking.fullName} checked in at ${booking.gate ?? "the gate"} for your ${booking.visitTime || "scheduled"} meeting.`,
       reference: booking.id,
     });
     whatsapp("visitor_checked_in", booking, { gate: booking.gate });
@@ -275,9 +275,9 @@ export const notificationService = {
   sendMeetingReminder(booking: VisitRequest): void {
     dispatch({
       channel: "push",
-      to: booking.hostName,
-      subject: `Upcoming meeting — ${booking.visitTime}`,
-      body: `${booking.fullName} is scheduled to meet you at ${booking.visitTime}.`,
+      to: booking.hostName || "Front Desk",
+      subject: `Upcoming meeting — ${booking.visitTime || "Scheduled"}`,
+      body: `${booking.fullName} is scheduled to meet you at ${booking.visitTime || "the scheduled time"}.`,
       reference: booking.id,
     });
   },

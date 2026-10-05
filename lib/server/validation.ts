@@ -5,17 +5,13 @@ import { z } from "zod";
 import {
   AVAILABILITY_STATUSES,
   EMERGENCY_TYPES,
-  GENDERS,
   GUARD_SHIFTS,
   GUARD_STATUSES,
-  ID_PROOF_TYPES,
   INCIDENT_SEVERITIES,
   INCIDENT_STATUSES,
   ROLES,
   VEHICLE_TYPES,
-  GUEST_RELATIONS,
   VISITOR_TYPES,
-  VISIT_PURPOSES,
 } from "@/lib/types";
 import { validateAadhaar } from "@/lib/validation";
 import { PHOTO_MESSAGES } from "@/lib/photo";
@@ -91,161 +87,79 @@ export const zPhotoId = z
  * Bookings
  * ------------------------------------------------------------------ */
 
-export const bookingSchema = z.object({
-  fullName: zName,
-  mobile: zMobile,
-  email: zOptionalEmail,
-  gender: zEnum(GENDERS, "Select a gender."),
-  organization: z.string().trim().max(120).optional().default(""),
-  address: z.string().trim().max(300).optional().default(""),
-  emergencyContact: z
-    .string()
-    .transform((v) => v.replace(/[\s-]/g, ""))
-    .refine((v) => v === "" || MOBILE.test(v), "Enter a valid 10-digit contact number.")
-    .optional()
-    .default(""),
-  whatsappCountryCode: z
-    .string()
-    .trim()
-    .regex(/^\+?\d{1,4}$/, "Enter a valid country code, e.g. +91.")
-    .transform((v) => (v.startsWith("+") ? v : `+${v}`))
-    .optional()
-    .default("+91"),
-  whatsappNumber: z
-    .string()
-    .transform((v) => v.replace(/[\s-]/g, ""))
-    .refine((v) => v === "" || /^\d{6,12}$/.test(v), "Enter a valid WhatsApp number.")
-    .optional()
-    .default(""),
-  visitorType: zEnum(VISITOR_TYPES, "Select a visitor type."),
-  idType: zEnum(ID_PROOF_TYPES, "Select an ID type."),
-  idNumber: z
-    .string()
-    .trim()
-    .min(4, "ID number looks too short.")
-    .max(20, "ID number looks too long.")
-    .regex(/^[A-Za-z0-9][A-Za-z0-9 \-/]*$/, "Use letters, digits, spaces or hyphens only."),
-  /**
-   * Mandatory for every booking, however it was raised.
-   *
-   * A visitor is admitted on the strength of the face the gate sees matching
-   * the record, so a booking without a photograph is not a booking this system
-   * will create — the public form, the desk and any future integration all go
-   * through this schema.
-   */
-  photoId: zPhotoId,
-  purpose: zEnum(VISIT_PURPOSES, "Select a purpose."),
-  purposeDetail: z.string().trim().max(300).optional(),
-  hostId: z.string().trim().nullable().optional(),
-  departmentId: z.string().trim().nullable().optional(),
-  visitDate: zDate,
-  visitTime: zTime,
-  expectedDuration: z.string().trim().min(1).default("30 minutes"),
-  numberOfVisitors: z.coerce
-    .number()
-    .int("Enter a whole number.")
-    .min(1, "At least one visitor is required."),
-  vehicleRequired: z.boolean().default(false),
-  vehicleNumber: z.string().trim().optional(),
-  notes: z.string().trim().max(500).optional(),
-  specialRequirements: z.string().trim().max(300).optional(),
-});
+export const zAadhaar = z
+  .string({ error: "Please enter a valid 12-digit Aadhaar number." })
+  .transform((v) => v.replace(/[^\d]/g, ""))
+  .superRefine((v, ctx) => {
+    const problem = validateAadhaar(v);
+    if (problem) ctx.addIssue({ code: "custom", message: problem });
+  });
+
+export const bookingSchema = z
+  .object({
+    fullName: zName,
+    aadhaarNumber: zAadhaar,
+    mobileNumber: zMobile,
+    photoId: zPhotoId,
+    hasCar: z.boolean(),
+    carNumber: z.string().trim().optional().default(""),
+
+    // Legacy/compatibility fields with defaults
+    mobile: z.string().optional().default(""),
+    idNumber: z.string().optional().default(""),
+    email: zOptionalEmail,
+    gender: z.string().optional().default("Prefer not to say"),
+    organization: z.string().optional().default(""),
+    address: z.string().optional().default(""),
+    emergencyContact: z.string().optional().default(""),
+    whatsappCountryCode: z.string().optional().default("+91"),
+    whatsappNumber: z.string().optional().default(""),
+    visitorType: z.string().optional().default("Guest"),
+    idType: z.string().optional().default("Aadhaar Card"),
+    purpose: z.string().optional().default("Campus Visit"),
+    purposeDetail: z.string().optional().default(""),
+    hostId: z.string().nullable().optional(),
+    departmentId: z.string().nullable().optional(),
+    visitDate: z.string().optional().default(() => new Date().toISOString().split("T")[0]),
+    visitTime: z.string().optional().default("09:00"),
+    expectedDuration: z.string().optional().default("30 minutes"),
+    numberOfVisitors: z.number().optional().default(1),
+    vehicleRequired: z.boolean().optional().default(false),
+    vehicleNumber: z.string().optional().default(""),
+    notes: z.string().optional().default(""),
+    specialRequirements: z.string().optional().default(""),
+  })
+  .superRefine((value, ctx) => {
+    if (value.hasCar && (!value.carNumber || !value.carNumber.trim())) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["carNumber"],
+        message: "Please enter your car/vehicle registration number.",
+      });
+    }
+  });
 
 export type BookingInput = z.infer<typeof bookingSchema>;
 
-/* ------------------------------------------------------------------ *
- * Accompanying visitors and the public booking form
- * ------------------------------------------------------------------ */
+export const guestInputSchema = z.object({
+  fullName: z.string().trim().min(2, "Full name is required."),
+  mobile: z.string().trim().optional(),
+  aadhaarNumber: z.string().trim().optional(),
+  relation: z.string().trim().optional(),
+  address: z.string().trim().optional(),
+});
+export type GuestInput = z.infer<typeof guestInputSchema>;
 
-/**
- * One additional person on a booking.
- *
- * The Aadhaar rule is a *format* check — twelve digits with a valid Verhoeff
- * check digit. Nothing here contacts an authorised verification service, so a
- * value that passes is well-formed, never "verified".
- */
-export const guestSchema = z.object({
-  fullName: zName,
-  mobile: zMobile,
-  aadhaar: z
-    .string()
-    .transform((v) => v.replace(/[^\d]/g, ""))
-    .superRefine((v, ctx) => {
-      const problem = validateAadhaar(v);
-      if (problem) ctx.addIssue({ code: "custom", message: problem });
-    }),
-  relation: zEnum(GUEST_RELATIONS, "Select the relation to the primary visitor."),
-  address: z
+export const publicBookingSchema = bookingSchema.extend({
+  idempotencyKey: z
     .string()
     .trim()
-    .min(8, "Please enter the house address.")
-    .max(300, "Please keep the address under 300 characters."),
+    .min(8, "Invalid request.")
+    .max(120, "Invalid request.")
+    .regex(/^[A-Za-z0-9_-]+$/, "Invalid request.")
+    .optional(),
+  guests: z.array(guestInputSchema).optional().default([]),
 });
-
-export type GuestInput = z.infer<typeof guestSchema>;
-
-/**
- * The public pre-booking form.
- *
- * Stricter than `bookingSchema`, which also serves the desk: a visitor booking
- * themselves must give a reachable address and name everyone in the party, and
- * the guest list has to agree with the headcount. The desk keeps the looser
- * rules because staff take bookings by phone with partial details.
- */
-export const publicBookingSchema = bookingSchema
-  .extend({
-    // The public form asks the visitor to describe the purpose, so the server
-    // requires it too rather than trusting the browser to have insisted.
-    purposeDetail: z
-      .string()
-      .trim()
-      .min(10, "Please describe the purpose of your visit.")
-      .max(300, "Please keep this under 300 characters."),
-    address: z
-      .string()
-      .trim()
-      .min(8, "Please enter your house address.")
-      .max(300, "Please keep the address under 300 characters."),
-    guests: z.array(guestSchema).max(19, "That is more visitors than one booking can carry.").default([]),
-    /**
-     * Client-generated replay guard. Opaque to the server — it only has to be
-     * stable across retries of the same submission and unique between
-     * different ones.
-     */
-    idempotencyKey: z
-      .string()
-      .trim()
-      .min(8, "Invalid request.")
-      .max(120, "Invalid request.")
-      .regex(/^[A-Za-z0-9_-]+$/, "Invalid request.")
-      .optional(),
-  })
-  .superRefine((value, ctx) => {
-    const expected = value.numberOfVisitors - 1;
-    if (value.guests.length !== expected) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["guests"],
-        message:
-          expected === 0
-            ? "Remove the additional visitor details, or increase the number of visitors."
-            : `Enter details for all ${expected} additional visitor${expected === 1 ? "" : "s"}.`,
-      });
-    }
-
-    // Two people on one booking cannot be the same person.
-    const seen = new Set<string>();
-    value.guests.forEach((guest, index) => {
-      if (seen.has(guest.aadhaar)) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["guests", index, "aadhaar"],
-          message: "This Aadhaar number is already listed on this booking.",
-        });
-      }
-      seen.add(guest.aadhaar);
-    });
-  });
 
 export type PublicBookingInput = z.infer<typeof publicBookingSchema>;
 

@@ -8,6 +8,7 @@ import type {
   SecurityGuard,
   Teacher,
   Vehicle,
+  VisitPurpose,
   VisitRequest,
 } from "./types";
 import { ON_CAMPUS_STATUSES, isOnCampus, toMeetingStatus } from "./types";
@@ -52,7 +53,7 @@ export function getTodayVisits(db: AppDatabase): VisitRequest[] {
   const today = todayISO();
   return db.visitRequests
     .filter((v) => v.visitDate === today)
-    .sort((a, b) => a.visitTime.localeCompare(b.visitTime));
+    .sort((a, b) => (a.visitTime || "").localeCompare(b.visitTime || ""));
 }
 
 /** Meetings are a projection of bookings — see `lib/types.ts`. */
@@ -63,15 +64,15 @@ export function getMeetings(db: AppDatabase): Meeting[] {
       id: `MTG-${v.id.split("-").pop()}`,
       visitRequestId: v.id,
       visitorName: v.fullName,
-      visitorMobile: v.mobile,
-      visitorPhotoUrl: v.photoUrl,
-      hostId: v.hostId,
-      hostName: v.hostName,
-      department: v.department,
-      date: v.visitDate,
-      time: v.visitTime,
-      purpose: v.purpose,
-      duration: v.expectedDuration,
+      visitorMobile: v.mobileNumber || v.mobile || "",
+      visitorPhotoUrl: v.photoPath || v.photoUrl,
+      hostId: v.hostId ?? null,
+      hostName: v.hostName || "Front Desk",
+      department: v.department || "General",
+      date: v.visitDate || todayISO(),
+      time: v.visitTime || "09:00",
+      purpose: (v.purpose || "Campus Visit") as VisitPurpose,
+      duration: v.expectedDuration || "30 minutes",
       notes: v.notes,
       status: v.status,
       meetingStatus: toMeetingStatus(v.status),
@@ -367,13 +368,14 @@ export function matchesQuery(booking: VisitRequest, query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
   return [
-    booking.id,
-    booking.fullName,
-    booking.mobile,
-    booking.hostName,
-    booking.department,
-    booking.organization,
-    booking.vehicleNumber ?? "",
-    booking.badgeNumber ?? "",
-  ].some((field) => field.toLowerCase().includes(q));
+    booking.id || "",
+    booking.fullName || "",
+    booking.aadhaarNumber || booking.idNumber || "",
+    booking.mobileNumber || booking.mobile || "",
+    booking.hostName || "",
+    booking.department || "",
+    booking.organization || "",
+    booking.carNumber || booking.vehicleNumber || "",
+    booking.badgeNumber || "",
+  ].some((field) => (field || "").toLowerCase().includes(q));
 }

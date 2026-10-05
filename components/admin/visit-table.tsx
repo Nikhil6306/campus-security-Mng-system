@@ -18,7 +18,8 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { VisitRowActions } from "@/components/admin/visit-actions";
 import { VisitorPhotoThumb } from "@/components/shared/visitor-photo";
 import type { VisitRequest } from "@/lib/types";
-import { cn, formatClock, formatDate, formatTime } from "@/lib/utils";
+import { formatDate } from "@/lib/utils";
+import { maskAadhaar } from "@/lib/validation";
 
 interface VisitTableProps {
   records: VisitRequest[];
@@ -33,45 +34,35 @@ interface VisitTableProps {
   onReschedule?: (record: VisitRequest) => void;
 }
 
-function VisitorCell({ record, showId }: { record: VisitRequest; showId?: boolean }) {
+function VisitorCell({ record }: { record: VisitRequest }) {
+  const photoUrl = record.photoPath || record.photoUrl;
   return (
     <div className="flex items-center gap-3">
-      {/* The photograph taken at booking, so a row is recognisable at a glance.
-          Falls back to initials for bookings made before photos were required. */}
-      <VisitorPhotoThumb photoUrl={record.photoUrl} name={record.fullName} size="sm" />
+      <VisitorPhotoThumb photoUrl={photoUrl} name={record.fullName} size="sm" />
       <div className="min-w-0">
         <p className="truncate text-sm font-medium">{record.fullName}</p>
-        <p className="truncate text-xs text-muted-foreground">
-          {showId ? (
-            <span className="font-mono">{record.id}</span>
-          ) : (
-            record.organization || record.visitorType
-          )}
-        </p>
+        <p className="truncate text-xs font-mono text-muted-foreground">{record.id}</p>
       </div>
     </div>
   );
 }
 
 /**
- * The console's primary list view. Rendered on the dashboard (compact) and on
- * the visitor / request pages (full), so every row exposes the same actions.
+ * Simplified Admin/Security Visitor Table.
  */
 export function VisitTable({
   records,
   loading,
-  variant = "compact",
+  variant: _variant = "compact",
   emptyTitle = "No visitor records found",
-  emptyDescription = "Try adjusting the filters, or wait for new visit requests to arrive.",
+  emptyDescription = "Try adjusting the search criteria or wait for new visitor entries.",
   emptyAction,
   onView,
   onReject,
   onGate,
   onReschedule,
 }: VisitTableProps) {
-  const full = variant === "full";
-
-  if (loading) return <TableLoadingState rows={5} columns={full ? 7 : 5} />;
+  if (loading) return <TableLoadingState rows={5} columns={8} />;
 
   if (records.length === 0) {
     return (
@@ -89,88 +80,68 @@ export function VisitTable({
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
-            <TableHead className="min-w-[190px]">Visitor</TableHead>
-            {full && <TableHead className="min-w-[120px]">Mobile</TableHead>}
-            <TableHead className="min-w-[150px]">Host</TableHead>
-            <TableHead className="min-w-[110px]">Purpose</TableHead>
-            <TableHead className="min-w-[120px]">Visit date</TableHead>
-            <TableHead className="min-w-[90px]">Time</TableHead>
-            {full && <TableHead className="min-w-[100px]">Check-in</TableHead>}
-            {full && <TableHead className="min-w-[100px]">Check-out</TableHead>}
-            <TableHead className="min-w-[120px]">Status</TableHead>
-            <TableHead className="min-w-[150px] text-right">Action</TableHead>
+            <TableHead className="min-w-[180px]">Visitor</TableHead>
+            <TableHead className="min-w-[130px]">Masked Aadhaar</TableHead>
+            <TableHead className="min-w-[120px]">Mobile</TableHead>
+            <TableHead className="min-w-[70px]">Car</TableHead>
+            <TableHead className="min-w-[120px]">Car Number</TableHead>
+            <TableHead className="min-w-[130px]">Registration Date</TableHead>
+            <TableHead className="min-w-[110px]">Status</TableHead>
+            <TableHead className="min-w-[130px] text-right">Action</TableHead>
           </TableRow>
         </TableHeader>
 
         <TableBody>
-          {records.map((record) => (
-            <TableRow key={record.id} className="group">
-              <TableCell>
-                <VisitorCell record={record} showId={full} />
-              </TableCell>
+          {records.map((record) => {
+            const aadhaar = record.aadhaarNumber || record.idNumber || "";
+            const mobile = record.mobileNumber || record.mobile || "";
+            const hasCar = record.hasCar || Boolean(record.vehicleRequired);
+            const carNumber = record.carNumber || record.vehicleNumber || "";
 
-              {full && (
+            return (
+              <TableRow key={record.id} className="group">
+                <TableCell>
+                  <VisitorCell record={record} />
+                </TableCell>
+
                 <TableCell className="font-mono text-xs text-muted-foreground">
-                  {record.mobile}
+                  {maskAadhaar(aadhaar)}
                 </TableCell>
-              )}
 
-              <TableCell>
-                <p className="truncate text-sm">{record.hostName}</p>
-                <p className="truncate text-xs text-muted-foreground">{record.department}</p>
-              </TableCell>
-
-              <TableCell>
-                <Badge variant="secondary" size="sm">
-                  {record.purpose}
-                </Badge>
-              </TableCell>
-
-              <TableCell className="whitespace-nowrap text-sm">
-                {formatDate(record.visitDate)}
-              </TableCell>
-
-              <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
-                {formatTime(record.visitTime)}
-              </TableCell>
-
-              {full && (
-                <TableCell
-                  className={cn(
-                    "whitespace-nowrap text-sm",
-                    record.checkInAt ? "text-foreground" : "text-muted-foreground",
-                  )}
-                >
-                  {formatClock(record.checkInAt)}
+                <TableCell className="font-mono text-xs text-muted-foreground">
+                  {mobile}
                 </TableCell>
-              )}
 
-              {full && (
-                <TableCell
-                  className={cn(
-                    "whitespace-nowrap text-sm",
-                    record.checkOutAt ? "text-foreground" : "text-muted-foreground",
-                  )}
-                >
-                  {formatClock(record.checkOutAt)}
+                <TableCell>
+                  <Badge variant={hasCar ? "default" : "outline"} size="sm">
+                    {hasCar ? "Yes" : "No"}
+                  </Badge>
                 </TableCell>
-              )}
 
-              <TableCell>
-                <StatusBadge status={record.status} />
-              </TableCell>
+                <TableCell className="font-mono text-xs uppercase">
+                  {hasCar && carNumber ? carNumber : "—"}
+                </TableCell>
 
-              <TableCell className="text-right">
-                <VisitRowActions
-                  record={record}
-                  onView={onView}
-                  onReject={onReject}
-                  onGate={onGate}
-                  onReschedule={onReschedule}
-                />
-              </TableCell>
-            </TableRow>
-          ))}
+                <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
+                  {formatDate(record.createdAt || record.visitDate || "")}
+                </TableCell>
+
+                <TableCell>
+                  <StatusBadge status={record.status} />
+                </TableCell>
+
+                <TableCell className="text-right">
+                  <VisitRowActions
+                    record={record}
+                    onView={onView}
+                    onReject={onReject}
+                    onGate={onGate}
+                    onReschedule={onReschedule}
+                  />
+                </TableCell>
+              </TableRow>
+            );
+          })}
         </TableBody>
       </Table>
     </TableWrap>
