@@ -1,5 +1,6 @@
 import { SiteFooter } from "@/components/layout/site-footer";
 import { SiteHeader } from "@/components/layout/site-header";
+import { ContactInfoBar } from "@/components/layout/contact-info-bar";
 
 /**
  * Chrome for the public visitor portal — every page a visitor can reach
@@ -13,6 +14,7 @@ export default function PublicLayout({ children }: { children: React.ReactNode }
         {children}
       </main>
       <SiteFooter />
+      <ContactInfoBar />
     </div>
   );
 }

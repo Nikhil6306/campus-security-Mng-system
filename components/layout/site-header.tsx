@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CalendarCheck, MapPin, Menu, Phone, Search } from "lucide-react";
+import { CalendarCheck, Menu, Phone } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetClose, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -34,32 +34,6 @@ export function SiteHeader() {
          every focusable child inside it switches to a white ring. */
       className="sticky top-0 z-40 bg-primary text-white shadow-[0_1px_3px_rgba(23,32,51,0.12),0_4px_16px_-6px_rgba(58,134,255,0.45)] [&_a:focus-visible]:!ring-white [&_a:focus-visible]:!ring-offset-primary [&_button:focus-visible]:!ring-white [&_button:focus-visible]:!ring-offset-primary"
     >
-      {/* Utility strip — university contact, not navigation */}
-      <div className="hidden border-b border-white/15 lg:block">
-        <div className="container flex h-9 items-center justify-between text-xs">
-          <p className="flex items-center gap-2 text-white/85">
-            <MapPin className="h-3.5 w-3.5 shrink-0 text-white/70" aria-hidden />
-            {UNIVERSITY.city}, {UNIVERSITY.state}, {UNIVERSITY.country}
-          </p>
-          <div className="flex items-center gap-5">
-            <a
-              href={`tel:${CONTACT.generalPhone.replace(/\s/g, "")}`}
-              className="flex items-center gap-2 rounded-sm text-white/85 transition-colors hover:text-white"
-            >
-              <Phone className="h-3.5 w-3.5 shrink-0 text-white/70" aria-hidden />
-              {CONTACT.generalPhone}
-            </a>
-            <Link
-              href={STATUS_PATH}
-              className="flex items-center gap-2 rounded-sm text-white/85 transition-colors hover:text-white"
-            >
-              <Search className="h-3.5 w-3.5 shrink-0" aria-hidden />
-              Check Booking Status
-            </Link>
-          </div>
-        </div>
-      </div>
-
       <div className="container flex h-16 items-center justify-between gap-4">
         <Logo priority tone="onNavy" subtitle={UNIVERSITY.portalName} />
 
