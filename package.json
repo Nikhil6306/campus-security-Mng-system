@@ -47,6 +47,9 @@
     "tailwindcss-animate": "^1.0.7",
     "zod": "^4.6.1"
   },
+  "engines": {
+    "node": "24.x"
+  },
   "devDependencies": {
     "@types/node": "^22.13.5",
     "@types/react": "^19.0.10",
