@@ -692,12 +692,12 @@ export const FAQS: { question: string; answer: string }[] = [
  * ------------------------------------------------------------------ */
 
 export const PUBLIC_NAV: { href: string; label: string }[] = [
-  { href: "/", label: "Home" },
-  { href: "/about", label: "About DSVV" },
-  { href: "/campus", label: "Campus" },
-  { href: "/academics", label: "Academics" },
-  { href: "/facilities", label: "Facilities" },
-  { href: "/visitor-guide", label: "Visitor Guide" },
+  { href: "/#hero", label: "Home" },
+  { href: "/#visitor-registration", label: "Visitor Registration" },
+  { href: "/#campus-360", label: "Campus 360°" },
+  { href: "/#security-info", label: "Security Information" },
+  { href: "/#about", label: "About" },
+  { href: "/login", label: "Admin Login" },
 ];
 
 export const BOOK_PATH = "/pre-book-visit";
