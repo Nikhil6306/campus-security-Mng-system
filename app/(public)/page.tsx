@@ -1,503 +1,494 @@
 import Link from "next/link";
+import Image from "next/image";
 import type { Metadata } from "next";
 import {
-  ArrowRight,
-  ArrowUpRight,
-  CalendarCheck,
-  ClipboardCheck,
-  Leaf,
-  Mail,
-  MapPin,
-  Phone,
-  Search,
+  ExternalLink,
+  ShieldCheck,
+  Car,
+  FileText,
+  Users,
+  Lock,
+  PhoneCall,
+  Building2,
+  AlertTriangle,
+  Compass,
+  Shield,
+  CheckCircle2,
   Sparkles,
+  Phone,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CampusGallery } from "@/components/public/campus-gallery";
-import { FaqList } from "@/components/public/faq-list";
-import { FeatureCard, IconTile, StatCard } from "@/components/public/cards";
-import { MediaFrame } from "@/components/public/media-frame";
-import { Section, SectionHeading } from "@/components/public/section";
-import {
-  ABOUT_PARAGRAPHS,
-  BOOK_PATH,
-  CONTACT,
-  FACILITIES,
-  FAQS,
-  GALLERY,
-  HIGHLIGHTS,
-  HOW_IT_WORKS,
-  SCHOOLS,
-  STATUS_PATH,
-  UNIVERSITY,
-  VISITOR_AUDIENCES,
-  VISIT_REASONS,
-} from "@/lib/dsvv";
+import { BookingWizard } from "@/components/visitor/booking-wizard";
+import { UNIVERSITY, CONTACT } from "@/lib/dsvv";
 
 export const metadata: Metadata = {
-  // Absolute: the home page is already the full site name, so the layout
-  // template would otherwise repeat it.
-  title: { absolute: `${UNIVERSITY.name} | Visitor & Campus Visit Portal` },
+  title: { absolute: `${UNIVERSITY.name} | Campus Security Management System` },
   description:
-    "Plan a visit to Dev Sanskriti Vishwavidyalaya, Haridwar. Explore the campus, academic schools and facilities, read the visitor guide, and pre-book your campus visit online.",
+    "Official Campus Security Management System for Dev Sanskriti Vishwavidyalaya, Haridwar. Secure digital visitor registration, vehicle monitoring, 360° virtual tour and security guidelines.",
   alternates: { canonical: "/" },
   openGraph: {
-    title: `${UNIVERSITY.name} | Visitor & Campus Visit Portal`,
+    title: `${UNIVERSITY.name} | Campus Security Management System`,
     description:
-      "Explore Dev Sanskriti Vishwavidyalaya, Haridwar and pre-book your campus visit.",
+      "A secure and efficient digital platform for managing campus visitors, vehicle entries and security records.",
     url: "/",
-    images: [{ url: "/assets/dsvv/dsvv-campus-entrance.webp", width: 1920, height: 1280 }],
+    images: [{ url: "/images/campus/college-entrance.jpg", width: 1200, height: 800 }],
   },
 };
 
-/** Facilities shown on the home page; the rest live on /facilities. */
-const FACILITY_PREVIEW = FACILITIES.slice(0, 6);
+const campusPhotos = [
+  {
+    title: "Main Campus Building",
+    description: "Administrative & Central Block",
+    src: "/images/campus/college-main.jpg",
+  },
+  {
+    title: "Campus Entrance Gate",
+    description: "Main Security Control & Gate Desk",
+    src: "/images/campus/college-entrance.jpg",
+  },
+  {
+    title: "Academic & Library Block",
+    description: "Learning Spaces & Academic Facilities",
+    src: "/images/campus/college-building.jpg",
+  },
+  {
+    title: "Green Campus Environment",
+    description: "Himalayan Foothills & Serene Grounds",
+    src: "/images/campus/college-area.jpg",
+  },
+];
+
+const securityFeatures = [
+  {
+    icon: Users,
+    title: "Visitor Management",
+    description: "Digitally register and maintain visitor information for seamless campus verification.",
+  },
+  {
+    icon: Car,
+    title: "Vehicle Monitoring",
+    description: "Maintain vehicle-related visitor information for enhanced gate control and campus safety.",
+  },
+  {
+    icon: FileText,
+    title: "Digital Records",
+    description: "Keep visitor records organized, searchable, and securely stored for audit readiness.",
+  },
+  {
+    icon: ShieldCheck,
+    title: "Secure Campus",
+    description: "Support a safer and better-managed campus environment for students, faculty, and guests.",
+  },
+];
+
+const securityGuidelines = [
+  "All visitors must complete visitor registration prior to or upon campus entry.",
+  "Valid official identification information (such as Aadhaar Card) should be provided.",
+  "Visitor photographs may be recorded at entry points for identification and security purposes.",
+  "Vehicles entering the campus must be properly recorded with valid registration details.",
+  "All visitors should follow instructions issued by campus security personnel at all times.",
+  "Unauthorized access to restricted academic, residential, or administrative zones is strictly prohibited.",
+];
+
+const emergencyContacts = [
+  {
+    title: "Campus Security Desk",
+    subtitle: "Gate Control & Main Patrol",
+    phone: CONTACT.generalPhone,
+    icon: ShieldCheck,
+    color: "border-primary/30 bg-primary/5 text-primary",
+  },
+  {
+    title: "University Administration",
+    subtitle: "Main Administrative Office",
+    phone: CONTACT.admissionsPhone,
+    icon: Building2,
+    color: "border-blue-500/30 bg-blue-50/50 text-blue-700 dark:bg-blue-950/20 dark:text-blue-400",
+  },
+  {
+    title: "Police Station",
+    subtitle: "Haridwar City Police",
+    phone: "112 / 01334-227200",
+    icon: AlertTriangle,
+    color: "border-amber-500/30 bg-amber-50/50 text-amber-700 dark:bg-amber-950/20 dark:text-amber-400",
+  },
+  {
+    title: "Ambulance / Medical",
+    subtitle: "Campus Health Center",
+    phone: "108 / Emergency Care",
+    icon: PhoneCall,
+    color: "border-emerald-500/30 bg-emerald-50/50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400",
+  },
+  {
+    title: "Fire Emergency",
+    subtitle: "Haridwar Fire Department",
+    phone: "101",
+    icon: Shield,
+    color: "border-red-500/30 bg-red-50/50 text-red-700 dark:bg-red-950/20 dark:text-red-400",
+  },
+];
 
 export default function HomePage() {
   return (
-    <>
-      {/* ------------------------------ Hero ------------------------------ */}
+    <div className="flex flex-col min-h-screen">
+      {/* ------------------------------------------------------------------ */}
+      {/* 1. HERO SECTION                                                     */}
+      {/* ------------------------------------------------------------------ */}
       <section
-        className="relative overflow-hidden border-b border-border bg-background"
-        aria-labelledby="hero-title"
+        id="hero"
+        className="relative overflow-hidden bg-gradient-to-b from-primary/10 via-background to-background py-12 lg:py-20 border-b border-border"
       >
-        {/* A pale blue wash and one soft glow — no dark backdrop, no pattern. */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 bg-gradient-to-b from-secondary via-background to-background"
-        />
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -right-32 -top-40 h-[34rem] w-[34rem] rounded-full bg-primary/[0.08] blur-3xl"
-        />
-
-        <div className="container relative grid gap-12 py-14 lg:grid-cols-[1.05fr_0.95fr] lg:items-center lg:gap-16 lg:py-20">
-          <div className="space-y-7">
+        <div className="container relative z-10 grid gap-10 lg:grid-cols-12 lg:items-center">
+          {/* LEFT CONTENT */}
+          <div className="lg:col-span-6 space-y-6 text-left">
             <Badge
               variant="outline"
-              className="border-border bg-secondary px-3 py-1 text-primary-strong"
+              className="inline-flex items-center gap-2 border-primary/30 bg-primary/10 px-3.5 py-1 text-sm font-semibold text-primary"
             >
-              <Sparkles className="text-primary" aria-hidden />
-              Welcome to {UNIVERSITY.name}
+              <Sparkles className="h-4 w-4 text-primary" />
+              {UNIVERSITY.name}
             </Badge>
 
-            <div className="space-y-5">
-              <h1
-                id="hero-title"
-                className="text-balance text-4xl font-semibold leading-[1.08] tracking-tight text-foreground sm:text-5xl lg:text-6xl"
-              >
-                Experience the campus.
-                <span className="block text-primary">Discover DSVV.</span>
+            <div className="space-y-3">
+              <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl lg:text-5xl leading-tight">
+                Campus Security <br className="hidden sm:inline" />
+                <span className="text-primary">Management System</span>
               </h1>
-              <p className="max-w-xl text-pretty text-base leading-relaxed text-muted-foreground sm:text-lg">
-                Plan your visit to {UNIVERSITY.name} and experience its academic environment,
-                peaceful campus, cultural values and learning spaces.
+              <p className="text-base sm:text-lg font-medium text-primary/90 tracking-wide">
+                Smart • Secure • Digital Campus Management
               </p>
             </div>
 
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <Button asChild size="lg">
-                <Link href={BOOK_PATH}>
-                  Pre-Book a Visit
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
+            <p className="text-base text-muted-foreground leading-relaxed max-w-xl">
+              A secure and efficient digital platform for managing campus visitors, vehicle entries, and security records for Dev Sanskriti Vishwavidyalaya.
+            </p>
+
+            <div className="flex flex-col sm:flex-row gap-3 pt-2">
+              <Button asChild size="lg" className="font-semibold shadow-md">
+                <a href="#visitor-registration">
+                  <ShieldCheck className="mr-2 h-5 w-5" />
+                  Register Visitor
+                </a>
               </Button>
-              <Button asChild size="lg" variant="brandOutline">
-                <Link href="/campus">Explore the Campus</Link>
+              <Button asChild size="lg" variant="outline" className="font-semibold">
+                <a href="#campus-360">
+                  <Compass className="mr-2 h-5 w-5" />
+                  Explore Campus 360°
+                </a>
               </Button>
             </div>
 
-            <dl className="grid max-w-xl gap-x-6 gap-y-3 border-t border-border pt-6 sm:grid-cols-3">
-              {[
-                { label: "Established 2002", value: "Haridwar, Uttarakhand" },
-                { label: "UGC recognised", value: "NAAC accredited" },
-                { label: "Visits by pre-booking", value: "Reviewed before entry" },
-              ].map((item) => (
-                <div key={item.label}>
-                  <dt className="text-sm font-medium text-foreground">{item.label}</dt>
-                  <dd className="text-sm text-muted-foreground">{item.value}</dd>
-                </div>
-              ))}
-            </dl>
+            {/* Quick stats highlights */}
+            <div className="pt-6 border-t border-border grid grid-cols-3 gap-4 text-center sm:text-left">
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase">Campus</p>
+                <p className="text-sm font-bold text-foreground">76.80 Acres</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase">Location</p>
+                <p className="text-sm font-bold text-foreground">Haridwar, UK</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase">Security</p>
+                <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">24/7 Monitored</p>
+              </div>
+            </div>
           </div>
 
-          {/* The campus photograph keeps its place in the hero, now as a
-              framed panel on a white page rather than a dark full-bleed wash. */}
-          <div className="relative">
-            <div
-              aria-hidden
-              className="absolute -inset-3 -z-10 rounded-2xl bg-primary/[0.06] blur-2xl"
-            />
-            <MediaFrame
-              src="/assets/dsvv/dsvv-campus-entrance.webp"
-              alt={`Shriram Bhawan, the administrative block of ${UNIVERSITY.name} in ${UNIVERSITY.city}`}
-              ratio="4/3"
-              priority
-              sizes="(max-width: 1024px) 100vw, 45vw"
-              className="shadow-[0_18px_40px_-18px_rgba(23,32,51,0.28)]"
-            />
+          {/* RIGHT PHOTOGRAPH */}
+          <div className="lg:col-span-6">
+            <div className="relative overflow-hidden rounded-2xl border border-border shadow-2xl group bg-muted">
+              <div className="aspect-[4/3] relative w-full overflow-hidden">
+                <Image
+                  src="/images/campus/college-entrance.jpg"
+                  alt={`${UNIVERSITY.name} Main Campus Gate`}
+                  fill
+                  priority
+                  sizes="(max-width: 1024px) 100vw, 50vw"
+                  className="object-cover transition-transform duration-500 group-hover:scale-105"
+                />
+                {/* Subtle dark overlay for contrast */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+
+                <div className="absolute bottom-4 left-4 right-4 text-white p-2">
+                  <Badge className="bg-primary text-white mb-1">Campus Portal</Badge>
+                  <h3 className="text-lg font-bold">{UNIVERSITY.name}</h3>
+                  <p className="text-xs text-white/80">Main Gate Security & Visitor Control Center</p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* ------------------------------ About ----------------------------- */}
-      <Section aria-labelledby="about-title">
-        <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
-          <div className="space-y-6">
-            <SectionHeading
-              id="about-title"
-              eyebrow="About the university"
-              title={`About ${UNIVERSITY.name}`}
-              description={UNIVERSITY.vision}
-            />
-            {ABOUT_PARAGRAPHS.slice(0, 2).map((paragraph) => (
-              <p key={paragraph} className="text-[15px] leading-relaxed text-muted-foreground">
-                {paragraph}
-              </p>
-            ))}
-            <Button asChild variant="outline" size="lg">
-              <Link href="/about">
-                Discover DSVV
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
+      {/* ------------------------------------------------------------------ */}
+      {/* 2. VISITOR REGISTRATION – MOST IMPORTANT SECTION                    */}
+      {/* ------------------------------------------------------------------ */}
+      <section id="visitor-registration" className="py-14 lg:py-20 bg-muted/30 border-b border-border">
+        <div className="container max-w-4xl space-y-8">
+          <div className="text-center space-y-3">
+            <Badge variant="outline" className="border-primary/30 text-primary font-semibold">
+              Entry Verification
+            </Badge>
+            <h2 className="text-3xl font-bold tracking-tight sm:text-4xl text-foreground">
+              Visitor Registration
+            </h2>
+            <p className="text-muted-foreground max-w-xl mx-auto text-base">
+              Please provide the required information for secure campus entry.
+            </p>
           </div>
 
-          <MediaFrame
-            src="/assets/dsvv/dsvv-temple.webp"
-            alt={`Pragyeshwar Mahadev Temple at the centre of the ${UNIVERSITY.name} campus`}
-            ratio="4/3"
-            sizes="(max-width: 1024px) 100vw, 50vw"
-            className="shadow-panel"
+          {/* Embedded Visitor Booking Wizard */}
+          <div className="shadow-lg rounded-xl overflow-hidden border border-border bg-card">
+            <BookingWizard />
+          </div>
+        </div>
+      </section>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* 3. COLLEGE CAMPUS IMAGE SECTION                                    */}
+      {/* ------------------------------------------------------------------ */}
+      <section id="explore-campus" className="py-14 lg:py-20 border-b border-border bg-background">
+        <div className="container space-y-10">
+          <div className="text-center space-y-3 max-w-2xl mx-auto">
+            <Badge variant="outline" className="border-primary/30 text-primary font-semibold">
+              Virtual Gallery
+            </Badge>
+            <h2 className="text-3xl font-bold tracking-tight sm:text-4xl text-foreground">
+              Explore Our Campus
+            </h2>
+            <p className="text-muted-foreground text-base">
+              Discover the campus environment and important locations through our virtual campus experience.
+            </p>
+          </div>
+
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            {campusPhotos.map((photo) => (
+              <div
+                key={photo.title}
+                className="group relative overflow-hidden rounded-xl border border-border bg-card shadow-sm hover:shadow-md transition-all duration-300 flex flex-col"
+              >
+                <div className="aspect-[4/3] relative overflow-hidden bg-muted">
+                  <Image
+                    src={photo.src}
+                    alt={photo.title}
+                    fill
+                    sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
+                    className="object-cover transition-transform duration-500 group-hover:scale-105"
+                  />
+                </div>
+                <div className="p-4 space-y-1">
+                  <h3 className="font-bold text-base text-foreground group-hover:text-primary transition-colors">
+                    {photo.title}
+                  </h3>
+                  <p className="text-xs text-muted-foreground">{photo.description}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* 4. CAMPUS 360° SECTION                                              */}
+      {/* ------------------------------------------------------------------ */}
+      <section id="campus-360" className="py-14 lg:py-20 bg-slate-900 text-white border-b border-border relative overflow-hidden">
+        <div className="absolute inset-0 opacity-20 pointer-events-none">
+          <Image
+            src="/images/campus/college-campus.jpg"
+            alt="Campus Background"
+            fill
+            className="object-cover"
           />
         </div>
-      </Section>
+        <div className="container relative z-10 max-w-4xl text-center space-y-8">
+          <Badge className="bg-primary text-white px-3 py-1 font-semibold">
+            360° Virtual Experience
+          </Badge>
 
-      {/* ---------------------------- Highlights -------------------------- */}
-      <Section tone="muted" compact aria-labelledby="highlights-title">
-        <SectionHeading
-          id="highlights-title"
-          eyebrow="At a glance"
-          title="The university in brief"
-          description="Information published by the university."
-        />
-        <ul className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          {HIGHLIGHTS.map((item) => (
-            <li key={item.label}>
-              <StatCard
-                icon={item.icon}
-                value={item.value}
-                label={item.label}
-                detail={item.detail}
+          <div className="space-y-3">
+            <h2 className="text-3xl font-bold tracking-tight sm:text-4xl text-white">
+              Explore Campus in 360°
+            </h2>
+            <p className="text-slate-300 max-w-xl mx-auto text-base leading-relaxed">
+              Take a virtual tour of the campus and explore important locations from anywhere.
+            </p>
+          </div>
+
+          <div className="relative rounded-2xl overflow-hidden border border-white/20 shadow-2xl max-w-3xl mx-auto group">
+            <div className="aspect-[16/9] relative w-full bg-slate-800">
+              <Image
+                src="/images/campus/college-campus.jpg"
+                alt="Campus 360 View Preview"
+                fill
+                sizes="(max-width: 1024px) 100vw, 800px"
+                className="object-cover opacity-80 group-hover:opacity-95 transition-opacity duration-300"
               />
-            </li>
-          ))}
-        </ul>
-      </Section>
-
-      {/* ---------------------------- Why visit --------------------------- */}
-      <Section aria-labelledby="why-title">
-        <SectionHeading
-          id="why-title"
-          eyebrow="Why visit"
-          title="Why visit DSVV?"
-          description="A campus visit is the clearest way to understand how the university teaches, what it values and where its students live and learn."
-        />
-        <ul className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {VISIT_REASONS.map((reason) => (
-            <li key={reason.title}>
-              <FeatureCard
-                icon={reason.icon}
-                title={reason.title}
-                description={reason.description}
-              />
-            </li>
-          ))}
-        </ul>
-      </Section>
-
-      {/* ------------------------- Campus experience ---------------------- */}
-      <Section tone="muted" aria-labelledby="campus-title">
-        <SectionHeading
-          id="campus-title"
-          eyebrow="Campus"
-          title="A campus designed for learning, growth and reflection"
-          description="Academic, residential, cultural and recreational spaces sit within one green campus in the Himalayan foothills."
-          action={
-            <Button asChild variant="outline">
-              <Link href="/facilities">
-                All facilities
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
-          }
-        />
-        <ul className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {FACILITY_PREVIEW.map((facility) => (
-            <li key={facility.title}>
-              <FeatureCard
-                icon={facility.icon}
-                title={facility.title}
-                description={facility.description}
-              />
-            </li>
-          ))}
-        </ul>
-      </Section>
-
-      {/* ----------------------------- Gallery ---------------------------- */}
-      <Section aria-labelledby="gallery-title">
-        <SectionHeading
-          id="gallery-title"
-          eyebrow="Gallery"
-          title={`Explore the ${UNIVERSITY.shortName} campus`}
-          description="Photographs of the campus. Slots awaiting an official photograph are marked."
-        />
-        <CampusGallery items={GALLERY} />
-      </Section>
-
-      {/* ---------------------------- Academics --------------------------- */}
-      <Section tone="muted" aria-labelledby="academics-title">
-        <SectionHeading
-          id="academics-title"
-          eyebrow="Academics"
-          title="Explore academic opportunities"
-          description="Teaching is organised into four schools spanning the humanities, technology, the life sciences and Indology."
-          action={
-            <Button asChild variant="outline">
-              <Link href="/academics">
-                Academics overview
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
-          }
-        />
-        <ul className="mt-10 grid gap-4 sm:grid-cols-2">
-          {SCHOOLS.map((school) => (
-            <li key={school.name}>
-              <FeatureCard icon={school.icon} title={school.name} description={school.description}>
-                <a
-                  href={UNIVERSITY.website}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  className="inline-flex items-center gap-1.5 text-sm font-medium text-primary-strong underline-offset-4 hover:underline"
-                >
-                  Explore programs
-                  <ArrowUpRight className="h-3.5 w-3.5" aria-hidden />
-                  <span className="sr-only">on the official DSVV website (opens in a new tab)</span>
-                </a>
-              </FeatureCard>
-            </li>
-          ))}
-        </ul>
-      </Section>
-
-      {/* --------------------------- Who can visit ------------------------ */}
-      <Section aria-labelledby="audience-title">
-        <SectionHeading
-          id="audience-title"
-          eyebrow="Visitors"
-          title="Who can visit?"
-          description="Pre-booking is open to anyone with a legitimate reason to come to the campus. Choose the description that fits you when you book."
-        />
-        <ul className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {VISITOR_AUDIENCES.map((audience) => (
-            <li key={audience.title}>
-              <FeatureCard
-                icon={audience.icon}
-                title={audience.title}
-                description={audience.description}
-              />
-            </li>
-          ))}
-        </ul>
-      </Section>
-
-      {/* --------------------------- How it works ------------------------- */}
-      <Section tone="muted" aria-labelledby="how-title">
-        <SectionHeading
-          id="how-title"
-          eyebrow="How it works"
-          title="Four steps from planning to arrival"
-          description="Every visit follows the same short sequence."
-        />
-        <ol className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {HOW_IT_WORKS.map((step, index) => (
-            <li key={step.title} className="relative flex flex-col gap-4">
-              <div className="flex items-center gap-3">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border bg-card text-sm font-semibold text-primary-strong shadow-xs">
-                  {index + 1}
-                </span>
-                <span
-                  aria-hidden
-                  className="hidden h-px flex-1 bg-border lg:block [li:last-child_&]:hidden"
-                />
-              </div>
-              <div>
-                <h3 className="flex items-center gap-2 text-base font-semibold">
-                  <step.icon className="h-4 w-4 text-accent" aria-hidden />
-                  {step.title}
-                </h3>
-                <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-                  {step.description}
+              <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent flex flex-col items-center justify-center p-6 text-center">
+                <div className="h-16 w-16 rounded-full bg-primary/90 text-white flex items-center justify-center mb-4 shadow-lg group-hover:scale-110 transition-transform">
+                  <Compass className="h-8 w-8 animate-spin-slow" />
+                </div>
+                <h3 className="text-xl font-bold text-white mb-2">{UNIVERSITY.name} 360° Tour</h3>
+                <p className="text-xs text-slate-300 max-w-md mb-6">
+                  Interactive panoramic tour of grounds, academic blocks, auditorium & surrounding grounds.
                 </p>
+                <Button
+                  asChild
+                  size="lg"
+                  className="bg-primary hover:bg-primary/90 text-white font-semibold shadow-xl"
+                >
+                  <a href="https://360view.dsvv.ac.in/" target="_blank" rel="noopener noreferrer">
+                    Explore 360° Campus
+                    <ExternalLink className="ml-2 h-4 w-4" />
+                  </a>
+                </Button>
               </div>
-            </li>
-          ))}
-        </ol>
-      </Section>
-
-      {/* ------------------------------- CTA ------------------------------ */}
-      <Section tone="brand" compact aria-labelledby="cta-title" className="text-center">
-        <div className="mx-auto max-w-2xl space-y-6">
-          <h2
-            id="cta-title"
-            className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl"
-          >
-            Ready to plan your visit?
-          </h2>
-          <p className="text-muted-foreground">
-            Submit your request in four short steps and receive a booking reference immediately.
-            Please check your status before travelling — a submitted request is not yet an approved
-            visit.
-          </p>
-          <div className="flex flex-col justify-center gap-3 sm:flex-row">
-            <Button asChild size="lg">
-              <Link href={BOOK_PATH}>
-                <CalendarCheck className="h-4 w-4" />
-                Pre-Book a Visit
-              </Link>
-            </Button>
-            <Button asChild size="lg" variant="brandOutline">
-              <Link href={STATUS_PATH}>
-                <Search className="h-4 w-4" />
-                Check Booking Status
-              </Link>
-            </Button>
-          </div>
-        </div>
-      </Section>
-
-      {/* ----------------------------- Location --------------------------- */}
-      <Section aria-labelledby="location-title">
-        <div className="grid gap-10 lg:grid-cols-2 lg:gap-16">
-          <div className="space-y-6">
-            <SectionHeading
-              id="location-title"
-              eyebrow="Find us"
-              title="Location and contact"
-              description={`The campus is at Gayatrikunj – Shantikunj, ${UNIVERSITY.city}, ${UNIVERSITY.state}.`}
-            />
-
-            <ul className="space-y-5">
-              <li className="flex gap-4">
-                <IconTile icon={MapPin} />
-                <div>
-                  <h3 className="text-sm font-semibold">Address</h3>
-                  <address className="mt-1 text-sm not-italic leading-relaxed text-muted-foreground">
-                    {CONTACT.addressLines.map((line) => (
-                      <span key={line} className="block">
-                        {line}
-                      </span>
-                    ))}
-                  </address>
-                </div>
-              </li>
-              <li className="flex gap-4">
-                <IconTile icon={Phone} />
-                <div>
-                  <h3 className="text-sm font-semibold">Phone</h3>
-                  <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-                    <a
-                      className="transition-colors hover:text-foreground"
-                      href={`tel:${CONTACT.generalPhone.replace(/\s/g, "")}`}
-                    >
-                      {CONTACT.generalPhone}
-                    </a>{" "}
-                    (general enquiry)
-                    <br />
-                    <a
-                      className="transition-colors hover:text-foreground"
-                      href={`tel:${CONTACT.admissionsPhone.replace(/\s/g, "")}`}
-                    >
-                      {CONTACT.admissionsPhone}
-                    </a>{" "}
-                    (admissions)
-                  </p>
-                </div>
-              </li>
-              <li className="flex gap-4">
-                <IconTile icon={Mail} />
-                <div>
-                  <h3 className="text-sm font-semibold">Email</h3>
-                  <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-                    <a
-                      className="transition-colors hover:text-foreground"
-                      href={`mailto:${CONTACT.generalEmail}`}
-                    >
-                      {CONTACT.generalEmail}
-                    </a>
-                    <br />
-                    <a
-                      className="transition-colors hover:text-foreground"
-                      href={`mailto:${CONTACT.admissionsEmail}`}
-                    >
-                      {CONTACT.admissionsEmail}
-                    </a>
-                  </p>
-                </div>
-              </li>
-            </ul>
-
-            <Button asChild variant="outline">
-              <a href={CONTACT.directionsUrl} target="_blank" rel="noreferrer noopener">
-                Get Directions
-                <ArrowUpRight className="h-4 w-4" />
-                <span className="sr-only">(opens Google Maps in a new tab)</span>
-              </a>
-            </Button>
-          </div>
-
-          <div className="space-y-4">
-            <MediaFrame
-              src="/assets/dsvv/dsvv-upvan-gardens.webp"
-              alt={`Shriram Smriti Upvan, the health park and gardens at ${UNIVERSITY.name}`}
-              ratio="4/3"
-              sizes="(max-width: 1024px) 100vw, 50vw"
-            />
-            <div className="flex items-start gap-3 rounded-lg border border-border bg-secondary p-4">
-              <Leaf className="mt-0.5 h-4 w-4 shrink-0 text-accent" aria-hidden />
-              <p className="text-sm leading-relaxed text-muted-foreground">
-                Office hours:{" "}
-                {CONTACT.officeHours.map((slot) => `${slot.days}, ${slot.hours}`).join("; ")}.
-                Campus gate timings and entry requirements are set by the university — please
-                confirm before travelling.
-              </p>
             </div>
           </div>
         </div>
-      </Section>
+      </section>
 
-      {/* ------------------------------- FAQ ------------------------------ */}
-      <Section tone="muted" flush aria-labelledby="faq-title">
-        <SectionHeading
-          id="faq-title"
-          eyebrow="Questions"
-          title="Frequently asked questions"
-          description="About visiting the campus and pre-booking a visit."
-        />
-        <FaqList items={FAQS} />
-        <p className="mt-6 flex items-center gap-2 text-sm text-muted-foreground">
-          <ClipboardCheck className="h-4 w-4 shrink-0 text-accent" aria-hidden />
-          More detail is in the{" "}
-          <Link href="/visitor-guide" className="font-medium text-primary-strong underline-offset-4 hover:underline">
-            Visitor Guide
-          </Link>
-          .
-        </p>
-      </Section>
-    </>
+      {/* ------------------------------------------------------------------ */}
+      {/* 5. SMART CAMPUS SECURITY SECTION                                   */}
+      {/* ------------------------------------------------------------------ */}
+      <section id="smart-security" className="py-14 lg:py-20 border-b border-border bg-muted/20">
+        <div className="container space-y-10">
+          <div className="text-center space-y-3 max-w-2xl mx-auto">
+            <Badge variant="outline" className="border-primary/30 text-primary font-semibold">
+              Security Features
+            </Badge>
+            <h2 className="text-3xl font-bold tracking-tight sm:text-4xl text-foreground">
+              Smart Campus Security
+            </h2>
+            <p className="text-muted-foreground text-base">
+              Integrated digital solutions ensuring a safe and structured campus environment.
+            </p>
+          </div>
+
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            {securityFeatures.map((item) => (
+              <div
+                key={item.title}
+                className="rounded-xl border border-border bg-card p-6 shadow-sm hover:shadow-md transition-shadow space-y-4"
+              >
+                <div className="h-12 w-12 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+                  <item.icon className="h-6 w-6" />
+                </div>
+                <h3 className="text-lg font-bold text-foreground">{item.title}</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">{item.description}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* 6. SECURITY GUIDELINES SECTION                                     */}
+      {/* ------------------------------------------------------------------ */}
+      <section id="security-info" className="py-14 lg:py-20 border-b border-border bg-background">
+        <div className="container max-w-4xl space-y-8">
+          <div className="text-center space-y-3">
+            <Badge variant="outline" className="border-primary/30 text-primary font-semibold">
+              Compliance & Regulations
+            </Badge>
+            <h2 className="text-3xl font-bold tracking-tight sm:text-4xl text-foreground">
+              Campus Security Guidelines
+            </h2>
+            <p className="text-muted-foreground text-base max-w-xl mx-auto">
+              Please review and adhere to the security rules while visiting Dev Sanskriti Vishwavidyalaya.
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-border bg-card p-6 sm:p-8 shadow-sm space-y-4">
+            <ul className="grid gap-4 sm:grid-cols-2">
+              {securityGuidelines.map((rule, idx) => (
+                <li key={idx} className="flex gap-3 items-start p-3 rounded-lg bg-muted/40">
+                  <CheckCircle2 className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                  <span className="text-sm text-foreground leading-relaxed font-medium">{rule}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* 7. EMERGENCY ASSISTANCE SECTION                                    */}
+      {/* ------------------------------------------------------------------ */}
+      <section id="emergency-assistance" className="py-14 lg:py-20 border-b border-border bg-muted/30">
+        <div className="container space-y-10">
+          <div className="text-center space-y-3 max-w-2xl mx-auto">
+            <Badge variant="outline" className="border-red-500/30 text-red-600 dark:text-red-400 font-semibold">
+              Emergency Response
+            </Badge>
+            <h2 className="text-3xl font-bold tracking-tight sm:text-4xl text-foreground">
+              Emergency Assistance
+            </h2>
+            <p className="text-muted-foreground text-base">
+              Immediate contact details for security, medical, and emergency services on campus.
+            </p>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+            {emergencyContacts.map((contact) => (
+              <div
+                key={contact.title}
+                className={`rounded-xl border p-5 shadow-xs flex flex-col justify-between space-y-3 ${contact.color}`}
+              >
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <contact.icon className="h-6 w-6" />
+                    <Phone className="h-4 w-4 opacity-60" />
+                  </div>
+                  <h3 className="font-bold text-base tracking-tight">{contact.title}</h3>
+                  <p className="text-xs opacity-80">{contact.subtitle}</p>
+                </div>
+                <div className="pt-2 border-t border-current/10">
+                  <a
+                    href={`tel:${contact.phone.replace(/[^0-9+]/g, "")}`}
+                    className="font-mono text-sm font-bold block hover:underline"
+                  >
+                    {contact.phone}
+                  </a>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* 8. ABOUT SYSTEM                                                     */}
+      {/* ------------------------------------------------------------------ */}
+      <section id="about" className="py-14 lg:py-20 bg-background">
+        <div className="container max-w-4xl space-y-6 text-center">
+          <Badge variant="outline" className="border-primary/30 text-primary font-semibold">
+            System Overview
+          </Badge>
+          <h2 className="text-3xl font-bold tracking-tight sm:text-4xl text-foreground">
+            About Campus Security Management System
+          </h2>
+          <div className="space-y-4 text-muted-foreground text-base leading-relaxed text-left sm:text-center max-w-3xl mx-auto">
+            <p>
+              The <strong>Campus Security Management System</strong> at Dev Sanskriti Vishwavidyalaya is designed to digitally record and manage visitor registrations, vehicle check-ins, and security records.
+            </p>
+            <p>
+              By replacing manual gate registers with verified digital passes, the system enables gate officers and administrative authorities to maintain strict access control, verify visitor credentials in real time, and safeguard campus peace and safety.
+            </p>
+          </div>
+
+          <div className="pt-4 flex justify-center">
+            <Button asChild variant="outline">
+              <Link href="/login">
+                <Lock className="mr-2 h-4 w-4" />
+                Admin / Security Guard Login Portal
+              </Link>
+            </Button>
+          </div>
+        </div>
+      </section>
+    </div>
   );
 }

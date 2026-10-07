@@ -136,10 +136,22 @@ export function LoginForm({ expectedRole }: { expectedRole?: Role } = {}) {
           </div>
         </FormField>
 
-        <Button type="submit" className="w-full" size="lg" loading={submitting}>
-          <LogIn className="h-4 w-4" />
-          Sign in
-        </Button>
+        <div className="flex items-center justify-between pt-1">
+          <button
+            type="button"
+            onClick={() => toast.info("Please contact the University IT / Security Administrator to reset your password.")}
+            className="text-xs text-primary font-medium hover:underline focus:outline-none"
+          >
+            Forgot Password?
+          </button>
+        </div>
+
+        <div className="flex flex-col gap-2 pt-2">
+          <Button type="submit" className="w-full py-5 font-semibold text-base shadow-sm" loading={submitting}>
+            <LogIn className="h-4 w-4 mr-1" />
+            Login to Security Console
+          </Button>
+        </div>
       </form>
 
       {/* Seeded demonstration accounts — remove before real deployment. */}

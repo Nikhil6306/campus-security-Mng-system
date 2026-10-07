@@ -11,7 +11,6 @@ import {
   CalendarDays,
   Car,
   ClipboardList,
-  Clock,
   DoorOpen,
   LogIn,
   ScanLine,
@@ -163,47 +162,46 @@ export default function AdminDashboardPage() {
 
       {/* ------------------------------- KPIs ------------------------------- */}
       <section aria-label="Key figures">
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-6">
           <StatCard
-            label="Today's Visitors"
-            value={stats.todayVisitors}
-            hint="Visits scheduled for today"
+            label="Total Visitors"
+            value={db.visitRequests.length}
+            hint="Total registered records"
             icon={Users}
             href="/admin/visitors"
             loading={!ready}
           />
           <StatCard
-            label="Pending Requests"
-            value={stats.pendingRequests}
-            hint="Awaiting host approval"
-            icon={Clock}
-            tone="warning"
-            href="/admin/requests"
-            loading={!ready}
-          />
-          <StatCard
-            label="Currently Inside"
-            value={stats.currentlyInside}
-            hint={`${stats.headCountInside} people on campus`}
+            label="Today's Entries"
+            value={stats.checkedInToday}
+            hint="Visitors entered today"
             icon={LogIn}
             tone="accent"
             href="/admin/checkin"
             loading={!ready}
           />
           <StatCard
-            label="Today's Meetings"
-            value={stats.todayMeetings}
-            hint="Approved for today"
-            icon={CalendarDays}
-            href="/admin/meetings"
+            label="Today's Exits"
+            value={stats.checkedOutToday}
+            hint="Visitors departed today"
+            icon={DoorOpen}
+            href="/admin/checkin"
+            loading={!ready}
+          />
+          <StatCard
+            label="Active Visitors"
+            value={stats.currentlyInside}
+            hint={`${stats.headCountInside} people on campus`}
+            icon={BadgeCheck}
+            tone="accent"
+            href="/admin/checkin"
             loading={!ready}
           />
           <StatCard
             label="Vehicles Inside"
             value={stats.vehiclesInside}
-            hint="Currently on campus"
+            hint="Registered vehicles on campus"
             icon={Car}
-            tone="accent"
             href="/admin/vehicles"
             loading={!ready}
           />
