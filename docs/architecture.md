@@ -11,7 +11,7 @@ This document provides an architectural audit of the existing Campus Security Ma
 - **Frontend Framework**: Next.js 15 (React 19, TypeScript, App Router).
 - **Styling**: Tailwind CSS, Radix UI primitives, Lucide icons, Sonner toast system.
 - **Visual Identity**: DSVV branding (Deep Navy `#002147`, Saffron `#e65100`, crisp white backgrounds).
-- **Current Data Layer**: Dual mode — SQLite (`.data/campus-security.db` via `node:sqlite`) and Supabase PostgreSQL schema (`supabase/migrations/`).
+- **Active Next.js Data Layer**: SQLite (`.data/campus-security.db` via `node:sqlite`). The separate NestJS backend uses Prisma/PostgreSQL. Supabase migrations exist but are not connected to either runtime.
 - **Existing Services**: WhatsApp notification service (Meta Cloud API / mock), Aadhaar AES-256-GCM encryption at rest, local visitor photo store.
 
 ### 2.2 Core Workflows Audited
@@ -20,16 +20,17 @@ This document provides an architectural audit of the existing Campus Security Ma
    - Step 2: Visit Details (Department selection, Faculty/Host dropdown, Date/Time, Duration, Purpose, Visitor count, Vehicle details).
    - Step 3: Photo Capture (Live webcam / file upload).
    - Step 4: Verification & Pass Generation (Digital QR Pass + WhatsApp confirmation).
-2. **Admin Dashboard (`/admin`)**:
+2. **Admin Sign-in (`/admin`)**: Direct administrator login; admin accounts continue to the dashboard.
+3. **Admin Dashboard (`/admin/dashboard`)**:
    - Overview metrics: Today's visits, Active on campus, Pending approvals, Security incidents.
    - Tabbed management: Visitors, Approvals, Gates, Security Guards, Incidents, Vehicles, Outings, Reports, Audit Logs, Settings.
-3. **Security Gate Flow (`/security`)**:
+4. **Security Gate Flow (`/security`)**:
    - Scanner tab: Real-time QR pass scanning & verification.
    - Check-in / Check-out execution with guard & gate tracking.
    - Vehicle log monitoring & manual gate check-in/check-out.
-4. **Faculty Portal (`/teacher`)**:
+5. **Faculty Portal (`/teacher`)**:
    - Visit request approvals/rejections, meeting scheduling, host availability controls.
-5. **Student Outing Portal (`/student`)**:
+6. **Student Outing Portal (`/student`)**:
    - Outing request submission and status tracking.
 
 ---

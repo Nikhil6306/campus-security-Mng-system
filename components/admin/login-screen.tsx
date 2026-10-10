@@ -26,7 +26,7 @@ const highlights = [
 ];
 
 /**
- * Shared sign-in screen used by both `/login` and `/admin/login`.
+ * Shared sign-in screen used by `/login`, `/admin`, and `/admin/login`.
  *
  * `expectedRole` is passed through to the sign-in call, where the server
  * refuses a valid account that belongs to a different portal.

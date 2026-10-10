@@ -15,7 +15,6 @@ const securityLinks = [
   { href: "/#smart-security", label: "Visitor Management" },
   { href: "/#security-info", label: "Security Guidelines" },
   { href: "/#emergency-assistance", label: "Emergency Assistance" },
-  { href: "/login", label: "Admin Login Portal" },
 ];
 
 export function SiteFooter() {

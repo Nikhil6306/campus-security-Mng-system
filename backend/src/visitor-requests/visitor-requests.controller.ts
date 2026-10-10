@@ -12,6 +12,9 @@ import { VisitorRequestsService } from './visitor-requests.service';
 import { CreateVisitorRequestDto, ApproveRejectRequestDto } from './dto/visitor-request.dto';
 import { VisitorStatus } from '@prisma/client';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
+import { ADMIN_ROLES } from '../common/auth-roles';
 import { GetUser } from '../common/decorators/get-user.decorator';
 
 @ApiTags('Visitor Requests')
@@ -26,6 +29,9 @@ export class VisitorRequestsController {
   }
 
   @Get()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(...ADMIN_ROLES)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Get list of visitor requests with pagination and filters' })
   @ApiQuery({ name: 'page', required: false })
   @ApiQuery({ name: 'limit', required: false })
@@ -47,7 +53,8 @@ export class VisitorRequestsController {
   }
 
   @Post(':id/approve')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(...ADMIN_ROLES)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Approve a pending visitor request' })
   async approve(
@@ -59,7 +66,8 @@ export class VisitorRequestsController {
   }
 
   @Post(':id/reject')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(...ADMIN_ROLES)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Reject a pending visitor request' })
   async reject(

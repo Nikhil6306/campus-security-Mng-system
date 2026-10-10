@@ -1,9 +1,16 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
+import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
 import { VisitorsService } from './visitors.service';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
+import { ADMIN_ROLES } from '../common/auth-roles';
 
 @ApiTags('Visitors')
 @Controller('visitors')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(...ADMIN_ROLES)
+@ApiBearerAuth()
 export class VisitorsController {
   constructor(private readonly visitorsService: VisitorsService) {}
 

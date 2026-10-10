@@ -39,7 +39,6 @@ export function SiteHeader() {
         <nav aria-label="Primary" className="hidden items-center gap-1 lg:flex">
           {PUBLIC_NAV.map((link) => {
             const active = isActive(link.href);
-            const isAdmin = link.href === "/login";
             return (
               <Link
                 key={link.href}
@@ -47,9 +46,7 @@ export function SiteHeader() {
                 aria-current={active ? "page" : undefined}
                 className={cn(
                   "rounded-md px-3 py-1.5 text-sm font-medium transition-all duration-200",
-                  isAdmin
-                    ? "ml-2 bg-white/15 hover:bg-white text-white hover:text-primary border border-white/20 shadow-xs font-semibold"
-                    : active
+                  active
                     ? "bg-white text-primary-strong shadow-xs font-semibold"
                     : "text-white/90 hover:bg-white/10 hover:text-white",
                 )}
@@ -89,9 +86,7 @@ export function SiteHeader() {
                       aria-current={isActive(link.href) ? "page" : undefined}
                       className={cn(
                         "rounded-md px-4 py-3 text-sm font-medium transition-colors flex items-center justify-between",
-                        link.href === "/login"
-                          ? "mt-2 bg-primary/10 text-primary font-semibold border border-primary/20"
-                          : isActive(link.href)
+                        isActive(link.href)
                           ? "bg-primary text-white font-semibold"
                           : "text-foreground hover:bg-muted",
                       )}

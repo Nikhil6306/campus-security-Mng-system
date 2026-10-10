@@ -16,7 +16,7 @@ export class UsersService {
         gate: true,
         isActive: true,
         createdAt: true,
-        userRoles: { include: { role: true } },
+        userRoles: { select: { role: { select: { id: true, name: true } } } },
       },
     });
   }
@@ -24,7 +24,18 @@ export class UsersService {
   async findOne(id: string) {
     const user = await this.prisma.user.findUnique({
       where: { id },
-      include: { userRoles: { include: { role: true } } },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        phone: true,
+        refId: true,
+        gate: true,
+        isActive: true,
+        createdAt: true,
+        lastLoginAt: true,
+        userRoles: { select: { role: { select: { id: true, name: true } } } },
+      },
     });
     if (!user) throw new NotFoundException('User not found');
     return user;

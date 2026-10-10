@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
@@ -15,20 +15,19 @@ export class AuthService {
   ) {}
 
   async hashPassword(password: string): Promise<string> {
-    try {
-      return await argon2.hash(password);
-    } catch {
-      return crypto.createHash('sha256').update(password).digest('hex');
-    }
+    return argon2.hash(password);
   }
 
   async verifyPassword(password: string, hash: string): Promise<boolean> {
     try {
-      if (hash.startsWith('$argon2')) {
-        return await argon2.verify(hash, password);
-      }
-      const sha256 = crypto.createHash('sha256').update(password).digest('hex');
-      return sha256 === hash;
+      if (hash.startsWith('$argon2')) return await argon2.verify(hash, password);
+
+      // Older builds could persist SHA-256 hashes if Argon2 failed to load.
+      // Accept them only long enough to upgrade the hash during this login.
+      if (!/^[a-f\d]{64}$/i.test(hash)) return false;
+      const expected = Buffer.from(hash, 'hex');
+      const actual = crypto.createHash('sha256').update(password).digest();
+      return crypto.timingSafeEqual(actual, expected);
     } catch {
       return false;
     }
@@ -56,20 +55,26 @@ export class AuthService {
       },
     });
 
-    if (!user || !user.isActive) {
-      throw new UnauthorizedException('Invalid email credentials or account inactive.');
+    const isMatch = user
+      ? await this.verifyPassword(dto.password, user.passwordHash)
+      : false;
+    if (!user || !user.isActive || !isMatch) {
+      throw new UnauthorizedException('Invalid email or password.');
     }
 
-    const isMatch = await this.verifyPassword(dto.password, user.passwordHash);
-    if (!isMatch) {
-      throw new UnauthorizedException('Invalid password credentials.');
+    if (!user.passwordHash.startsWith('$argon2')) {
+      const passwordHash = await this.hashPassword(dto.password);
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { passwordHash },
+      });
     }
 
     // Update last login
     await this.prisma.user.update({
       where: { id: user.id },
       data: { lastLoginAt: new Date() },
-    }).catch(() => null);
+    });
 
     const roles = user.userRoles.map((ur) => ur.role.name);
     const permissions = Array.from(
@@ -104,7 +109,12 @@ export class AuthService {
       include: { user: { include: { userRoles: { include: { role: true } } } } },
     });
 
-    if (!storedToken || storedToken.isRevoked || storedToken.expiresAt < new Date()) {
+    if (
+      !storedToken ||
+      storedToken.isRevoked ||
+      storedToken.expiresAt < new Date() ||
+      !storedToken.user.isActive
+    ) {
       throw new UnauthorizedException('Refresh token is invalid, revoked, or expired.');
     }
 
@@ -185,6 +195,6 @@ export class AuthService {
         tokenHash,
         expiresAt,
       },
-    }).catch(() => null);
+    });
   }
 }
