@@ -697,7 +697,6 @@ export const PUBLIC_NAV: { href: string; label: string }[] = [
   { href: "/#campus-360", label: "Campus 360°" },
   { href: "/#security-info", label: "Security Information" },
   { href: "/#about", label: "About" },
-  { href: "/login", label: "Admin Login" },
 ];
 
 export const BOOK_PATH = "/pre-book-visit";

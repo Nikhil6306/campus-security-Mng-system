@@ -10,7 +10,7 @@ import { InlineLoader } from "@/components/shared/states";
 import { useAuth } from "@/components/providers/auth-provider";
 import type { Role } from "@/lib/types";
 
-const PUBLIC_ADMIN_ROUTES = ["/admin/login"];
+const PUBLIC_ADMIN_ROUTES = ["/admin", "/admin/login"];
 
 /** Roles the console is built for. Everyone else is sent to their own portal. */
 const ADMIN_ROLES: Role[] = ["admin", "super_admin"];
@@ -41,7 +41,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     if (!ready || isPublicRoute) return;
     if (!session) {
-      router.replace(`/admin/login?next=${encodeURIComponent(pathname)}`);
+      router.replace(`/admin?next=${encodeURIComponent(pathname)}`);
     } else if (!permitted) {
       router.replace(HOME_FOR_ROLE[session.role] ?? "/");
     }

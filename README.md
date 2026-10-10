@@ -65,8 +65,9 @@ The bundled driver is **SQLite via Node's built-in `node:sqlite`** — real SQL,
 foreign keys and transactions, with no native build step and nothing to install.
 The file lives at `.data/campus-security.db`; delete it to start clean.
 
-The equivalent **PostgreSQL / Supabase** schema, including Row Level Security and
-Storage policies, is in `supabase/migrations/`. See *Running on Supabase* below.
+The **PostgreSQL / Supabase** schema, including Row Level Security and Storage
+policies, is in `supabase/migrations/`. It is not connected to the active
+Next.js runtime; the separate NestJS backend uses Prisma/PostgreSQL.
 
 Correctness that matters is enforced by the database, not by application code:
 
@@ -88,6 +89,7 @@ its audit entry can never drift apart.
 | Surface | Routes |
 | --- | --- |
 | **Public / visitor** | `/`, `/visitor`, `/visitor/book`, `/visitor/status`, `/visitor/pass/[id]`, `/visitor/help` |
+| **Admin sign-in** | `/admin` (also `/admin/login`) |
 | **Admin console** | `/admin/dashboard`, `visitors`, `bookings`, `requests`, `meetings`, `checkin`, `students`, `teachers`, `guards`, `guards/[id]`, `gates`, `vehicles`, `incidents`, `emergency`, `notifications`, `activity`, `reports`, `settings` |
 | **Gate console** | `/security/dashboard`, `scan`, `check-in`, `check-out`, `vehicles`, `incidents`, `emergency` |
 | **Teacher portal** | `/teacher/dashboard`, `meetings`, `availability`, `profile` |
@@ -230,29 +232,64 @@ frames locally with jsQR. No image is uploaded anywhere.
 
 ## Running on Supabase
 
-The application currently runs on the bundled SQLite driver. To move it to
-Supabase:
+The active Next.js application currently runs on SQLite with its existing
+session authentication. Supabase Auth/PostgreSQL and the Resend email service
+are not wired into its operational workflows. The Supabase migration files are
+preparation only; no Supabase project is linked from this repository.
 
-1. Create a project and apply the migrations:
+`lib/supabase.ts` creates an anon-key client only when called and fails explicitly
+if its URL/key are missing. It never substitutes a placeholder or a
+service-role key. The server-only email service requires a Resend API key and
+verified sender; outside production it also requires
+`RESEND_ENABLE_DEVELOPMENT_DELIVERY=true`. No incident, patrol, visitor, or
+authentication flow sends email yet.
 
-   ```bash
-   psql "$SUPABASE_DB_URL" -f supabase/migrations/0001_schema.sql
-   psql "$SUPABASE_DB_URL" -f supabase/migrations/0002_rls.sql
-   psql "$SUPABASE_DB_URL" -f supabase/migrations/0003_visit_guests.sql
-   psql "$SUPABASE_DB_URL" -f supabase/migrations/0004_faculty_notifications.sql
-   psql "$SUPABASE_DB_URL" -f supabase/migrations/0005_visitor_photos.sql
-   ```
+Optional root `.env.local` settings are documented in `.env.example`:
 
-   `0005` creates the private `campus-security` bucket if it is missing and
-   restricts the `visitor-photos/` prefix: staff may read, and nothing but the
-   service role may write. Port `lib/server/photo-store.ts` to Supabase Storage
-   under that prefix — it is the only module that touches photograph files.
+| Variable | Purpose |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | Project URL from the Supabase dashboard |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Publishable/anon key; database policies still apply |
+| `SUPABASE_SERVICE_ROLE_KEY` | Not used by the current app; if later needed, server-only and never `NEXT_PUBLIC_*` |
+| `SUPABASE_AUTH_REDIRECT_URL` | Reserved for a future Supabase Auth callback; no callback route is implemented |
+| `RESEND_API_KEY` | Resend API key from the Resend dashboard |
+| `RESEND_FROM_EMAIL` | Verified sender address configured in Resend |
+| `RESEND_ENABLE_DEVELOPMENT_DELIVERY` | Explicit opt-in required before sending from non-production |
+| `APP_BASE_URL` | Local application origin, normally `http://localhost:3000` |
 
-2. Fill in the Supabase variables in `.env.local` (see `.env.example`).
-3. Port `lib/server/repo.ts` and `lib/server/db.ts` to the Postgres client, and
-   move authentication to Supabase Auth against the `profiles` table. Because
-   `repo.ts` is the only module that writes SQL for the application, the
-   services above it do not change.
+Use Supabase **Project Settings → API** for the project URL and publishable
+key, and **Authentication → URL Configuration** to allowlist redirect URLs
+before an Auth cutover. Create Resend keys in its dashboard and verify the
+sender's domain before attempting delivery. The existing NestJS variables
+(`DATABASE_URL`, `DIRECT_URL`, Redis, JWT, CORS, S3 and WhatsApp settings)
+remain in `backend/.env.example`; they are not part of the active Next.js
+runtime.
+
+The visitor-policy migration `0008_restrict_visitor_access.sql` removes the
+anonymous visitor and photo writes and broad authenticated visitor access added
+by `0007`. The bucket remains private; an authorized, validated server upload
+path is required. These SQL policies have not been applied to or tested against
+a live Supabase project. Migration `0007` also adds plaintext Aadhaar-related
+columns, so review the data-protection design before storing real identity data
+in Supabase.
+
+To start the existing application on Windows PowerShell:
+
+```powershell
+if (-not (Test-Path .env.local)) {
+  Copy-Item .env.example .env.local
+} else {
+  Write-Output ".env.local already exists; leaving it unchanged."
+}
+npm install
+npm run dev
+```
+
+Do not apply Supabase migrations until the target project, existing database
+state, data migration, and authentication cutover have been reviewed and
+approved. For local development, configure only the optional placeholder
+variables in `.env.local`; keep service-role and Resend keys out of
+`NEXT_PUBLIC_*` variables and out of source control.
 
 `0002_rls.sql` enables RLS on **every** table — a table with RLS on and no policy
 denies all access, so reach is granted deliberately rather than inherited by

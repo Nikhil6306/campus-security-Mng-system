@@ -33,7 +33,7 @@ export function AdminTopbar() {
   const handleSignOut = () => {
     signOut();
     toast.success("Logged out successfully.");
-    router.push("/admin/login");
+    router.push("/admin");
   };
 
   return (
