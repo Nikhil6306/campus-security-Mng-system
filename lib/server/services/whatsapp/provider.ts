@@ -64,10 +64,17 @@ export interface WhatsAppProvider {
  * Meta WhatsApp Business Platform (Cloud API)
  * ------------------------------------------------------------------ */
 
-const GRAPH_VERSION = process.env.WHATSAPP_API_VERSION ?? "v21.0";
-const TEMPLATE_NAME = process.env.WHATSAPP_TEMPLATE_NAME?.trim();
-const FACULTY_TEMPLATE_NAME = process.env.WHATSAPP_FACULTY_TEMPLATE_NAME?.trim();
-const TEMPLATE_LANGUAGE = process.env.WHATSAPP_TEMPLATE_LANGUAGE?.trim() || "en";
+const GRAPH_VERSION =
+  process.env.META_GRAPH_API_VERSION ?? process.env.WHATSAPP_API_VERSION ?? "v21.0";
+const TEMPLATE_NAME = (
+  process.env.META_WHATSAPP_TEMPLATE_NAME ?? process.env.WHATSAPP_TEMPLATE_NAME
+)?.trim();
+const FACULTY_TEMPLATE_NAME = (
+  process.env.META_WHATSAPP_FACULTY_TEMPLATE_NAME ?? process.env.WHATSAPP_FACULTY_TEMPLATE_NAME
+)?.trim();
+const TEMPLATE_LANGUAGE = (
+  process.env.META_WHATSAPP_TEMPLATE_LANGUAGE ?? process.env.WHATSAPP_TEMPLATE_LANGUAGE
+)?.trim() || "en";
 
 class MetaCloudProvider implements WhatsAppProvider {
   readonly name = "meta" as const;
@@ -83,7 +90,7 @@ class MetaCloudProvider implements WhatsAppProvider {
   }
 
   get configurationHint(): string | undefined {
-    if (!this.configured) return "Set WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID.";
+    if (!this.configured) return "Set META_WHATSAPP_ACCESS_TOKEN and META_WHATSAPP_PHONE_NUMBER_ID.";
     if (!TEMPLATE_NAME) {
       return (
         "Connected, but no approved template is configured. Set WHATSAPP_TEMPLATE_NAME to " +
@@ -234,9 +241,21 @@ let cached: WhatsAppProvider | null = null;
 export function getProvider(): WhatsAppProvider {
   if (cached) return cached;
 
-  const requested = (process.env.WHATSAPP_PROVIDER ?? "").trim().toLowerCase();
-  const token = process.env.WHATSAPP_ACCESS_TOKEN ?? "";
-  const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID ?? "";
+  const requested = (
+    process.env.META_WHATSAPP_PROVIDER ??
+    process.env.WHATSAPP_PROVIDER ??
+    ""
+  ).trim().toLowerCase();
+  const token = (
+    process.env.META_WHATSAPP_ACCESS_TOKEN ??
+    process.env.WHATSAPP_ACCESS_TOKEN ??
+    ""
+  ).trim();
+  const phoneId = (
+    process.env.META_WHATSAPP_PHONE_NUMBER_ID ??
+    process.env.WHATSAPP_PHONE_NUMBER_ID ??
+    ""
+  ).trim();
 
   if (requested === "meta") {
     const meta = new MetaCloudProvider(token, phoneId);
@@ -264,13 +283,17 @@ export function providerStatus(): ProviderStatus {
     live,
     supportsMedia: provider.supportsMedia,
     // Only the identifier, never the token.
-    senderId: live ? process.env.WHATSAPP_PHONE_NUMBER_ID : undefined,
+    senderId: live
+      ? process.env.META_WHATSAPP_PHONE_NUMBER_ID ?? process.env.WHATSAPP_PHONE_NUMBER_ID
+      : undefined,
     template: live ? (TEMPLATE_NAME ?? null) : undefined,
     facultyTemplate: live ? (FACULTY_TEMPLATE_NAME ?? null) : undefined,
     // Display only — the sender is always the number behind the phone number
     // ID. Shown so staff know which number visitors will see.
     businessNumber: process.env.SECURITY_HEAD_WHATSAPP_NUMBER ?? undefined,
-    businessAccountId: live ? process.env.WHATSAPP_BUSINESS_ACCOUNT_ID : undefined,
+    businessAccountId: live
+      ? process.env.META_WHATSAPP_BUSINESS_ACCOUNT_ID ?? process.env.WHATSAPP_BUSINESS_ACCOUNT_ID
+      : undefined,
     hint: provider.configurationHint,
   };
 }

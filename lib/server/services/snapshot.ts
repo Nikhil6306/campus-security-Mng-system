@@ -11,16 +11,12 @@ import type {
 import { STATUS_CODES, isAdminRole } from "@/lib/types";
 
 /**
- * Statuses for which the visitor may still be handed their pass token.
+ * Statuses for which the visitor may be handed their pass token.
  *
- * `Pending` and `Rescheduled` are included so the QR code exists from the
- * moment the request is submitted: scanning it then shows "awaiting approval"
- * rather than nothing. The token identifies a booking; it authorises no entry,
- * and the gate re-reads the record before it decides anything.
+ * Only visits that have been approved by the host/faculty or checked in
+ * receive the QR pass token. Pending requests never receive a pass token.
  */
 const PASS_TOKEN_STATUSES: VisitStatus[] = [
-  "Pending",
-  "Rescheduled",
   "Approved",
   "Checked In",
   "Meeting In Progress",
@@ -295,7 +291,9 @@ export interface PublicBookingView {
   visitDate?: string;
   visitTime?: string;
   expectedDuration?: string;
+  expectedDepartureTime?: string;
   numberOfVisitors?: number;
+  vehicleType?: string;
   vehicleNumber?: string;
   badgeNumber?: string;
   passToken?: string;
@@ -307,6 +305,8 @@ export interface PublicBookingView {
   meetingStartedAt?: string;
   gate?: string;
   campusName: string;
+  whatsappCountryCode?: string;
+  whatsappNumber?: string;
 }
 
 /**
@@ -320,8 +320,6 @@ export function publicBookingView(booking: VisitRequest): PublicBookingView {
     status: booking.status,
     statusCode: STATUS_CODES[booking.status],
     fullName: booking.fullName,
-    aadhaarNumber: booking.aadhaarNumber,
-    idNumber: booking.idNumber || booking.aadhaarNumber,
     mobileNumber: booking.mobileNumber || booking.mobile,
     mobile: booking.mobile || booking.mobileNumber,
     hasCar: booking.hasCar || Boolean(booking.vehicleRequired),
@@ -335,7 +333,9 @@ export function publicBookingView(booking: VisitRequest): PublicBookingView {
     visitDate: booking.visitDate,
     visitTime: booking.visitTime,
     expectedDuration: booking.expectedDuration,
+    expectedDepartureTime: booking.expectedDepartureTime,
     numberOfVisitors: booking.numberOfVisitors || 1,
+    vehicleType: booking.vehicleType,
     vehicleNumber: booking.carNumber || booking.vehicleNumber,
     badgeNumber: booking.badgeNumber,
     passToken: PASS_TOKEN_STATUSES.includes(booking.status) ? booking.passToken : undefined,
@@ -347,5 +347,6 @@ export function publicBookingView(booking: VisitRequest): PublicBookingView {
     meetingStartedAt: booking.meetingStartedAt,
     gate: booking.gate,
     campusName: settings.campusName,
+    whatsappCountryCode: booking.whatsappCountryCode || "+91",
   };
 }

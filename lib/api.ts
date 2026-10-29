@@ -23,6 +23,15 @@ import type {
   Vehicle,
   VisitGuest,
   VisitRequest,
+  GuardDutyDashboardStats,
+  GuardShiftAssignment,
+  GuardShiftSession,
+  ShiftHandover,
+  ShiftHandoverItem,
+  PatrolRoute,
+  PatrolCheckpoint,
+  PatrolSubmission,
+  GateStaffingRequirement,
 } from "./types";
 
 /**
@@ -67,11 +76,12 @@ export function onSnapshot(listener: ((state: AppDatabase) => void) | null): voi
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
+  const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData;
   try {
     response = await fetch(path, {
       ...init,
       headers: {
-        ...(init?.body ? { "Content-Type": "application/json" } : {}),
+        ...(init?.body && !isFormData ? { "Content-Type": "application/json" } : {}),
         ...init?.headers,
       },
       credentials: "same-origin",
@@ -122,10 +132,17 @@ const body = (payload: unknown): RequestInit => ({ body: JSON.stringify(payload)
  * no content type of our own lets it set the header itself.
  */
 const postForm = <T>(path: string, form: FormData) =>
-  request<T>(path, { method: "POST", body: form, headers: {} });
+  request<T>(path, { method: "POST", body: form });
 
-const post = <T>(path: string, payload?: unknown) =>
-  request<T>(path, { method: "POST", ...(payload === undefined ? {} : body(payload)) });
+const post = <T>(path: string, payload?: unknown, init?: RequestInit) =>
+  request<T>(path, {
+    method: "POST",
+    ...(payload === undefined ? {} : body(payload)),
+    ...init,
+    headers: {
+      ...(init?.headers ?? {}),
+    },
+  });
 const patch = <T>(path: string, payload?: unknown) =>
   request<T>(path, { method: "PATCH", ...(payload === undefined ? {} : body(payload)) });
 const put = <T>(path: string, payload: unknown) =>
@@ -202,7 +219,9 @@ export interface PublicBookingView {
   visitDate?: string;
   visitTime?: string;
   expectedDuration?: string;
+  expectedDepartureTime?: string;
   numberOfVisitors?: number;
+  vehicleType?: string;
   vehicleNumber?: string;
   badgeNumber?: string;
   passToken?: string;
@@ -214,6 +233,8 @@ export interface PublicBookingView {
   meetingStartedAt?: string;
   gate?: string;
   campusName: string;
+  whatsappCountryCode?: string;
+  whatsappNumber?: string;
   /** True when an idempotency key resolved to a booking already created. */
   replayed?: boolean;
 }
@@ -244,6 +265,14 @@ export interface VerificationResult {
   booking?: VisitRequest;
   issues: { code: string; message: string }[];
   nextAction?: "check-in" | "check-out";
+  history?: {
+    id: string;
+    direction: "In" | "Out";
+    gate: string;
+    guardName: string;
+    at: string;
+    note?: string | null;
+  }[];
 }
 
 export interface GateResult {
@@ -379,6 +408,78 @@ export type BookingAction =
   | "start-meeting"
   | "complete-meeting";
 
+export interface MonthlyVisitorDatum {
+  month: number;
+  monthName: string;
+  monthShort: string;
+  count: number;
+  visits: number;
+  percentage: number;
+}
+
+export interface VisitorCategoryDatum {
+  category: string;
+  label: string;
+  count: number;
+  percentage: number;
+  color: string;
+}
+
+export interface RequestStatusDatum {
+  status: string;
+  label: string;
+  count: number;
+  percentage: number;
+  colorClass: string;
+}
+
+export interface GrowthPoint {
+  label: string;
+  key: string;
+  count: number;
+  visits: number;
+}
+
+export interface AdminVisitorAnalyticsResult {
+  stats: {
+    totalRegisteredVisitors: number;
+    currentMonthVisitors: number;
+    previousMonthVisitors: number;
+    currentMonthVisits: number;
+    previousMonthVisits: number;
+    monthlyDelta: number;
+    monthlyGrowthPercent: number;
+    totalEligibleVisits: number;
+    totalEligibleHeadcount: number;
+    totalRequests: number;
+  };
+  monthlyTrends: MonthlyVisitorDatum[];
+  growthTrend: GrowthPoint[];
+  categories: VisitorCategoryDatum[];
+  requestStatuses: RequestStatusDatum[];
+  availableYears: number[];
+  selectedYear: number;
+}
+
+export interface PublicMonthlyStatsResult {
+  year: number;
+  availableYears: number[];
+  months: {
+    month: number;
+    monthName: string;
+    monthShort: string;
+    count: number;
+    visits: number;
+    percentage: number;
+  }[];
+  totalYearVisitors: number;
+  totalYearVisits: number;
+  peakMonth: {
+    name: string;
+    count: number;
+  } | null;
+}
+
 /* ------------------------------------------------------------------ *
  * Endpoints
  * ------------------------------------------------------------------ */
@@ -387,6 +488,14 @@ export const api = {
   /* Session */
   signIn: (email: string, password: string, expectedRole?: Role) =>
     post<AuthSession>("/api/auth/login", { email, password, expectedRole }),
+  signUp: (payload: { email: string; password: string; fullName: string; role?: Role; phone?: string }) =>
+    post<AuthSession | null>("/api/auth/signup", payload),
+  forgotPassword: (email: string) =>
+    post<{ ok: boolean; message: string }>("/api/auth/forgot-password", { email }),
+  resetPassword: (password: string, token?: string) =>
+    post<{ ok: boolean; message: string }>("/api/auth/reset-password", { password }, {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    }),
   signOut: () => post<null>("/api/auth/logout"),
   session: () => request<AuthSession | null>("/api/auth/session"),
   state: () => request<StatePayload>("/api/state"),
@@ -532,10 +641,111 @@ export const api = {
     request<{ title: string; data: { label: string; value: number }[] }[]>(
       `/api/analytics${query({ days: String(days) })}`,
     ),
+  visitorAnalytics: (year?: number) =>
+    request<AdminVisitorAnalyticsResult>(
+      `/api/admin/visitor-analytics${query({ year: year ? String(year) : undefined })}`,
+    ),
+  publicMonthlyVisitors: (year?: number) =>
+    request<PublicMonthlyStatsResult>(
+      `/api/public/monthly-visitors${query({ year: year ? String(year) : undefined })}`,
+    ),
   search: (q: string) => request<SearchHit[]>(`/api/search${query({ q })}`),
   activity: (limit = 200) =>
     request<ActivityLog[]>(`/api/activity${query({ limit: String(limit) })}`),
   resetDemoData: () => post<{ reset: boolean }>("/api/admin/reset"),
+
+  /* Guard Duty & Shift Handover */
+  guardDutyDashboard: (params?: Record<string, string | undefined>) =>
+    request<GuardDutyDashboardStats>(`/api/guard-duty/dashboard${query(params ?? {})}`),
+  listGuardAssignments: (params?: Record<string, string | undefined>) =>
+    request<GuardShiftAssignment[]>(`/api/guard-duty/assignments${query(params ?? {})}`),
+  createGuardAssignment: (payload: {
+    guardId: string;
+    guardName: string;
+    gate: string;
+    dutyDate: string;
+    shiftType: string;
+    scheduledStartTime: string;
+    scheduledEndTime: string;
+    notes?: string;
+  }) => post<GuardShiftAssignment>("/api/guard-duty/assignments", payload),
+  reassignGuardAssignment: (id: string, payload: { newGuardId: string; newGuardName: string; reason: string }) =>
+    post<GuardShiftAssignment>(`/api/guard-duty/assignments/${id}/reassign`, payload),
+  staffingRequirements: () => request<GateStaffingRequirement[]>("/api/guard-duty/staffing"),
+  saveStaffingRequirement: (payload: { gate: string; shiftType: string; requiredGuards: number; notes?: string }) =>
+    post<GateStaffingRequirement>("/api/guard-duty/staffing", payload),
+  startGuardShift: (payload: { assignmentId: string; notes?: string }) =>
+    post<GuardShiftSession>("/api/guard-duty/shift/start", payload),
+  endGuardShift: (payload: {
+    sessionId: string;
+    shiftSummary: string;
+    equipmentHandoverNotes?: string;
+    incomingGuardId?: string;
+    incomingGuardName?: string;
+  }) => post<{ session: GuardShiftSession; handover: ShiftHandover }>("/api/guard-duty/shift/end", payload),
+  listHandovers: (params?: Record<string, string | undefined>) =>
+    request<ShiftHandover[]>(`/api/guard-duty/handovers${query(params ?? {})}`),
+  getHandoverDetails: (id: string) =>
+    request<ShiftHandover & { items: ShiftHandoverItem[] }>(`/api/guard-duty/handovers/${id}`),
+  acknowledgeHandover: (id: string, payload: { discrepancies?: string }) =>
+    post<ShiftHandover>(`/api/guard-duty/handovers/${id}/acknowledge`, payload),
+  decideHandover: (
+    id: string,
+    payload: { decision: "Approved" | "Rejected" | "Escalation"; notes?: string; rejectionReason?: string },
+  ) => post<ShiftHandover>(`/api/guard-duty/handovers/${id}/decision`, payload),
+  patrolRoutes: (routeId?: string) =>
+    request<PatrolRoute[] | PatrolCheckpoint[]>(
+      `/api/guard-duty/patrols/routes${query({ routeId })}`,
+    ),
+  submitPatrolCheck: (payload: {
+    assignmentId?: string;
+    checkpointId: string;
+    result: string;
+    observations?: string;
+    photoUrl?: string;
+  }) => post<PatrolSubmission>("/api/guard-duty/patrols/submit", payload),
+  patrolSubmissions: (params?: Record<string, string | undefined>) =>
+    request<PatrolSubmission[]>(`/api/guard-duty/patrols/submissions${query(params ?? {})}`),
+  liveHandoverData: (gate?: string) =>
+    request<{
+      visitorsInside: Array<{
+        id: string;
+        fullName: string;
+        gate: string;
+        checkInTime: string;
+        expectedCheckOutTime?: string;
+        status: string;
+        hostName: string;
+        department: string;
+        isOverdue: boolean;
+      }>;
+      openIncidents: Array<{
+        id: string;
+        type: string;
+        title: string;
+        location: string;
+        severity: string;
+        status: string;
+        reportedBy: string;
+        time: string;
+      }>;
+      pendingCheckpoints: Array<{
+        id: string;
+        name: string;
+        location: string;
+        routeName: string;
+      }>;
+    }>(`/api/guard-duty/live-handover-data${query({ gate })}`),
+  guardDutyReports: (params: Record<string, string | undefined>) =>
+    request<{
+      totalScheduledShifts: number;
+      completedShifts: number;
+      lateCheckIns: number;
+      totalPatrolsConducted: number;
+      patrolComplianceRate: number;
+      shifts: any[];
+      patrols: any[];
+    }>(`/api/guard-duty/reports${query(params)}`),
 };
 
 /** Friendly message for any thrown value — used by every toast in the app. */

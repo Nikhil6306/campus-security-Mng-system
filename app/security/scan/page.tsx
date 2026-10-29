@@ -18,6 +18,7 @@ import {
   User,
   Users,
   XCircle,
+  History,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { toast } from "@/components/ui/toaster";
 import { SectionHeader } from "@/components/shared/page-header";
 import { FormField, DetailRow } from "@/components/shared/form-field";
@@ -63,6 +74,13 @@ export default function SecurityScanPage() {
   const [result, setResult] = React.useState<VerificationResult | null>(null);
   const [verifying, setVerifying] = React.useState(false);
   const [committing, setCommitting] = React.useState(false);
+  const [confirmAction, setConfirmAction] = React.useState<"check-in" | "check-out" | null>(null);
+  const [completedOp, setCompletedOp] = React.useState<{
+    action: "IN" | "OUT";
+    fullName: string;
+    gate: string;
+    timestamp: string;
+  } | null>(null);
   const manualRef = React.useRef<HTMLInputElement>(null);
 
   // A guard's account is posted to a gate; default to theirs.
@@ -99,24 +117,39 @@ export default function SecurityScanPage() {
   };
 
   async function commit(action: "check-in" | "check-out") {
-    const booking = result?.booking;
-    if (!booking || !gate) return;
+    const currentBooking = result?.booking;
+    if (!currentBooking || !gate) return;
 
     setCommitting(true);
     try {
       if (action === "check-in") {
-        const outcome = await api.checkIn(booking.id, gate);
+        const outcome = await api.checkIn(currentBooking.id, gate);
+        const timeStr = new Date().toLocaleTimeString();
+        setCompletedOp({
+          action: "IN",
+          fullName: outcome.booking.fullName,
+          gate: outcome.gate,
+          timestamp: timeStr,
+        });
         toast.success("Visitor checked in.", {
           description: `${outcome.booking.fullName} at ${outcome.gate}.`,
         });
       } else {
-        const outcome = await api.checkOut(booking.id, gate);
+        const outcome = await api.checkOut(currentBooking.id, gate);
+        const timeStr = new Date().toLocaleTimeString();
+        setCompletedOp({
+          action: "OUT",
+          fullName: outcome.booking.fullName,
+          gate: outcome.gate,
+          timestamp: timeStr,
+        });
         toast.success("Visitor checked out.", {
           description: `${outcome.booking.fullName} at ${outcome.gate}.`,
         });
       }
+      setConfirmAction(null);
       // Re-verify so the panel shows the booking's new state rather than a guess.
-      await verify({ bookingId: booking.id });
+      await verify({ bookingId: currentBooking.id });
     } catch (error) {
       toast.error(errorMessage(error, "That gate action could not be completed."));
     } finally {
@@ -376,6 +409,14 @@ export default function SecurityScanPage() {
                     <DetailRow label="ID proof" value={booking.idType} />
                   </dl>
 
+                  {/* Completed operation banner */}
+                  {completedOp ? (
+                    <div className="flex items-center gap-2 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success font-medium">
+                      <CheckCircle2 className="h-4 w-4 shrink-0 text-success-strong" />
+                      Visitor marked {completedOp.action} at {completedOp.gate} ({completedOp.timestamp}).
+                    </div>
+                  ) : null}
+
                   {/* Gate actions — only what the server said is possible */}
                   <div className="flex flex-col gap-3 sm:flex-row">
                     {result.nextAction === "check-in" ? (
@@ -384,7 +425,7 @@ export default function SecurityScanPage() {
                         className="flex-1"
                         loading={committing}
                         disabled={!gate}
-                        onClick={() => void commit("check-in")}
+                        onClick={() => setConfirmAction("check-in")}
                       >
                         <LogIn className="h-5 w-5" />
                         Check in at {gate}
@@ -398,7 +439,7 @@ export default function SecurityScanPage() {
                         className="flex-1"
                         loading={committing}
                         disabled={!gate}
-                        onClick={() => void commit("check-out")}
+                        onClick={() => setConfirmAction("check-out")}
                       >
                         <LogOut className="h-5 w-5" />
                         Check out at {gate}
@@ -413,6 +454,35 @@ export default function SecurityScanPage() {
                     ) : null}
                   </div>
 
+                  {/* Entry/Exit History */}
+                  {result.history && result.history.length > 0 ? (
+                    <div className="mt-4 space-y-2 rounded-lg border border-border p-4">
+                      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        <History className="h-4 w-4" />
+                        Entry / Exit Event History
+                      </div>
+                      <div className="divide-y divide-border">
+                        {result.history.map((item) => (
+                          <div key={item.id} className="flex items-center justify-between py-2 text-xs">
+                            <div className="flex items-center gap-2">
+                              <Badge
+                                variant={item.direction === "In" ? "success" : "secondary"}
+                                size="sm"
+                              >
+                                {item.direction === "In" ? "CHECK IN" : "CHECK OUT"}
+                              </Badge>
+                              <span className="font-medium text-foreground">{item.gate}</span>
+                              <span className="text-muted-foreground">by {item.guardName}</span>
+                            </div>
+                            <span className="font-mono text-muted-foreground">
+                              {new Date(item.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+
                   {!result.ok ? (
                     <p className="flex items-start gap-2 rounded-md bg-muted p-3 text-xs text-muted-foreground">
                       <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden />
@@ -426,6 +496,32 @@ export default function SecurityScanPage() {
           )}
         </Card>
       </div>
+
+      {/* Confirmation Dialog */}
+      <AlertDialog open={Boolean(confirmAction)} onOpenChange={(open) => !open && setConfirmAction(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirmAction === "check-in" ? "Confirm Visitor Gate Entry" : "Confirm Visitor Gate Exit"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmAction === "check-in"
+                ? `Grant entry to ${booking?.fullName} at ${gate}? This records an immutable check-in event in the campus security log.`
+                : `Record exit for ${booking?.fullName} at ${gate}? This closes the active campus visit.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (confirmAction) void commit(confirmAction);
+              }}
+            >
+              {confirmAction === "check-in" ? "Confirm Check IN" : "Confirm Check OUT"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {!ready ? null : (
         <p className="flex items-center justify-center gap-2 text-xs text-muted-foreground">

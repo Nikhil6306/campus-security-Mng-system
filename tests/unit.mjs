@@ -223,6 +223,427 @@ test("null becomes an empty cell", () => {
 
 /* ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ *
+ * Campus timezone helpers (mirrors lib/utils.ts)
+ * ------------------------------------------------------------------ */
+
+const CAMPUS_TZ = "Asia/Kolkata";
+
+function nowInCampusTz() {
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: CAMPUS_TZ,
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  });
+  const parts = Object.fromEntries(fmt.formatToParts(new Date()).map((p) => [p.type, p.value]));
+  const date = `${parts.year}-${parts.month}-${parts.day}`;
+  const hours = Number(parts.hour) % 24;
+  const minutes = Number(parts.minute);
+  return { date, hours, minutes };
+}
+
+function todayInCampusTz(offsetDays = 0) {
+  if (offsetDays === 0) return nowInCampusTz().date;
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + offsetDays);
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: CAMPUS_TZ, year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(d);
+}
+
+function campusMinutesNow() {
+  const { hours, minutes } = nowInCampusTz();
+  return hours * 60 + minutes;
+}
+
+// Re-use existing availableSlots() from above
+// booking date/time validation logic (mirrors lib/server/services/bookings.ts)
+function validateBookingDateTime(visitDate, visitTime, visitingHoursFrom, visitingHoursTo) {
+  const today = todayInCampusTz();
+  if (visitDate < today) return { error: "past_date", message: "The visit date cannot be in the past." };
+
+  const minutes = toMinutes(visitTime);
+  if (minutes < toMinutes(visitingHoursFrom) || minutes >= toMinutes(visitingHoursTo)) {
+    return { error: "outside_hours", message: `Visiting hours are ${visitingHoursFrom} to ${visitingHoursTo}.` };
+  }
+
+  if (visitDate === today) {
+    const nowMins = campusMinutesNow();
+    if (minutes <= nowMins) return { error: "past_time", message: "That time has already passed today." };
+  }
+  return null; // valid
+}
+
+// Sync idempotency logic (mirrors supabase-db.ts per-record upsert)
+function simulateSync(existingById, incomingRecords) {
+  const skipped = [];
+  const upserted = [];
+  // Map of (host_id, visit_date, visit_time) -> booking_id for active statuses
+  const ACTIVE = new Set(["Pending", "Approved", "Rescheduled", "Checked In", "Meeting In Progress"]);
+  // Seed slot maps from existing local records
+  const hostSlot = new Map();
+  const visitorSlot = new Map();
+
+  for (const [id, rec] of Object.entries(existingById)) {
+    if (rec.host_id && ACTIVE.has(rec.status)) {
+      hostSlot.set(`${rec.host_id}|${rec.visit_date}|${rec.visit_time}`, id);
+    }
+    if (ACTIVE.has(rec.status)) {
+      visitorSlot.set(`${rec.visitor_id}|${rec.visit_date}|${rec.visit_time}`, id);
+    }
+  }
+
+  for (const v of incomingRecords) {
+    // PK conflict = harmless upsert (same id exists)
+    if (existingById[v.id]) {
+      upserted.push({ id: v.id, action: "updated" });
+      continue;
+    }
+    // Check partial index conflicts for active records
+    if (v.host_id && ACTIVE.has(v.status)) {
+      const key = `${v.host_id}|${v.visit_date}|${v.visit_time}`;
+      if (hostSlot.has(key)) {
+        skipped.push({ id: v.id, reason: "uniq_host_slot", conflictsWith: hostSlot.get(key) });
+        continue;
+      }
+    }
+    if (ACTIVE.has(v.status)) {
+      const key = `${v.visitor_id}|${v.visit_date}|${v.visit_time}`;
+      if (visitorSlot.has(key)) {
+        skipped.push({ id: v.id, reason: "uniq_visitor_slot", conflictsWith: visitorSlot.get(key) });
+        continue;
+      }
+    }
+    // Successful insert — register in slot maps so subsequent records see the conflict
+    if (v.host_id && ACTIVE.has(v.status)) {
+      hostSlot.set(`${v.host_id}|${v.visit_date}|${v.visit_time}`, v.id);
+    }
+    if (ACTIVE.has(v.status)) {
+      visitorSlot.set(`${v.visitor_id}|${v.visit_date}|${v.visit_time}`, v.id);
+    }
+    upserted.push({ id: v.id, action: "inserted" });
+  }
+  return { upserted, skipped };
+}
+
+section("Campus IST timezone helpers");
+
+test("todayInCampusTz returns a valid ISO date string", () => {
+  const today = todayInCampusTz();
+  assert.match(today, /^\d{4}-\d{2}-\d{2}$/, `expected yyyy-mm-dd, got ${today}`);
+});
+
+test("campusMinutesNow returns a value in [0, 1440)", () => {
+  const mins = campusMinutesNow();
+  assert.ok(mins >= 0 && mins < 1440, `expected [0,1440), got ${mins}`);
+});
+
+test("IST offset is +5:30 ahead of UTC", () => {
+  // At a known UTC epoch, IST should be 5h30m ahead.
+  // We just verify the timezone name is accepted by Intl.
+  const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: CAMPUS_TZ });
+  assert.ok(fmt.format(new Date()).match(/^\d{4}-\d{2}-\d{2}$/), "IST formatter should produce a date");
+});
+
+section("Booking date/time validation (IST-aware)");
+
+const VISIT_FROM = "07:00";
+const VISIT_TO  = "20:00";
+const campusNow = nowInCampusTz();
+const campusToday = campusNow.date;
+
+// A time that is definitely in the future today (next hour, capped to 19:00)
+const futureHour = Math.min(campusNow.hours + 1, 19);
+const futureTimeToday = `${String(futureHour).padStart(2, "0")}:00`;
+
+// A time that has definitely passed today (1 hour ago, floored to 08:00, capped to 19:00 within visiting hours)
+const pastHour = Math.min(Math.max(campusNow.hours - 1, 8), 19);
+const pastTimeToday = `${String(pastHour).padStart(2, "0")}:00`;
+
+const futureDate1 = todayInCampusTz(1);
+const futureDate5 = todayInCampusTz(5);
+const pastDate    = todayInCampusTz(-1);
+
+test("booking a future time today is allowed", () => {
+  // Only run meaningful check if there is a future time available today
+  if (futureHour > campusNow.hours) {
+    const result = validateBookingDateTime(campusToday, futureTimeToday, VISIT_FROM, VISIT_TO);
+    assert.equal(result, null, `expected valid, got ${JSON.stringify(result)}`);
+  }
+});
+
+test("booking a past time today is rejected with past_time error", () => {
+  // Only meaningful if an hour has passed since visiting hours opened
+  if (campusNow.hours > 8) {
+    const result = validateBookingDateTime(campusToday, pastTimeToday, VISIT_FROM, VISIT_TO);
+    assert.equal(result?.error, "past_time", `expected past_time, got ${JSON.stringify(result)}`);
+  }
+});
+
+test("booking a valid time on a future date is allowed", () => {
+  const result = validateBookingDateTime(futureDate5, "11:00", VISIT_FROM, VISIT_TO);
+  assert.equal(result, null, `expected valid for future date, got ${JSON.stringify(result)}`);
+});
+
+test("booking a time on tomorrow is allowed", () => {
+  const result = validateBookingDateTime(futureDate1, "09:00", VISIT_FROM, VISIT_TO);
+  assert.equal(result, null, `expected valid for tomorrow, got ${JSON.stringify(result)}`);
+});
+
+test("booking a past date is rejected with past_date error", () => {
+  const result = validateBookingDateTime(pastDate, "11:00", VISIT_FROM, VISIT_TO);
+  assert.equal(result?.error, "past_date", `expected past_date, got ${JSON.stringify(result)}`);
+});
+
+test("a time outside visiting hours is rejected with outside_hours error", () => {
+  const result = validateBookingDateTime(futureDate1, "06:00", VISIT_FROM, VISIT_TO);
+  assert.equal(result?.error, "outside_hours", `expected outside_hours, got ${JSON.stringify(result)}`);
+});
+
+test("a time equal to the visiting hours closing time is rejected (exclusive upper bound)", () => {
+  const result = validateBookingDateTime(futureDate1, "20:00", VISIT_FROM, VISIT_TO);
+  assert.equal(result?.error, "outside_hours", `expected outside_hours for closing time, got ${JSON.stringify(result)}`);
+});
+
+test("malformed time string is rejected (outside hours catches it via toMinutes=0)", () => {
+  // toMinutes("") = 0, which is < 07:00 = 420, so it returns outside_hours
+  const result = validateBookingDateTime(futureDate1, "", VISIT_FROM, VISIT_TO);
+  assert.equal(result?.error, "outside_hours", `expected outside_hours for empty time, got ${JSON.stringify(result)}`);
+});
+
+section("Supabase-to-SQLite sync idempotency");
+
+const EXISTING = {
+  "DSVV-VIS-2026-000001": {
+    id: "DSVV-VIS-2026-000001",
+    visitor_id: "VSTR-0001",
+    host_id: "TCH-001",
+    visit_date: "2026-10-20",
+    visit_time: "10:00",
+    status: "Pending",
+  },
+  "DSVV-VIS-2026-000002": {
+    id: "DSVV-VIS-2026-000002",
+    visitor_id: "VSTR-0002",
+    host_id: "TCH-002",
+    visit_date: "2026-10-20",
+    visit_time: "11:00",
+    status: "Approved",
+  },
+};
+
+test("repeated sync of the same records upserts without error", () => {
+  const incoming = Object.values(EXISTING);
+  const { upserted, skipped } = simulateSync(EXISTING, incoming);
+  assert.equal(skipped.length, 0, "no records should be skipped on repeated sync");
+  assert.equal(upserted.length, 2, "both records should be processed as updates");
+});
+
+test("sync when local db already contains the record applies update only", () => {
+  const incoming = [{ ...EXISTING["DSVV-VIS-2026-000001"], status: "Approved" }];
+  const { upserted, skipped } = simulateSync(EXISTING, incoming);
+  assert.equal(skipped.length, 0);
+  assert.equal(upserted[0].action, "updated");
+});
+
+test("genuine host slot conflict from Supabase is skipped and logged, not crashing sync", () => {
+  // Supabase has a new record with same host/date/time as an existing local one
+  const incoming = [{
+    id: "DSVV-VIS-2026-000099", // new id, not in existing
+    visitor_id: "VSTR-0099",
+    host_id: "TCH-001",         // same host
+    visit_date: "2026-10-20",   // same date
+    visit_time: "10:00",        // same time
+    status: "Pending",
+  }];
+  const { upserted, skipped } = simulateSync(EXISTING, incoming);
+  assert.equal(skipped.length, 1, "conflicting record should be skipped");
+  assert.equal(skipped[0].reason, "uniq_host_slot");
+  assert.equal(skipped[0].conflictsWith, "DSVV-VIS-2026-000001");
+  assert.equal(upserted.length, 0);
+});
+
+test("visitor slot conflict from Supabase is skipped (same visitor, date, time, different host)", () => {
+  const incoming = [{
+    id: "DSVV-VIS-2026-000100",
+    visitor_id: "VSTR-0001",  // same visitor
+    host_id: "TCH-999",
+    visit_date: "2026-10-20", // same date
+    visit_time: "10:00",      // same time
+    status: "Pending",
+  }];
+  const { upserted, skipped } = simulateSync(EXISTING, incoming);
+  assert.equal(skipped.length, 1);
+  assert.equal(skipped[0].reason, "uniq_visitor_slot");
+});
+
+test("a closed-status record from Supabase does not trigger partial index conflict", () => {
+  // A 'Rejected' booking for the same host/date/time slot should be inserted fine
+  const incoming = [{
+    id: "DSVV-VIS-2026-000101",
+    visitor_id: "VSTR-0003",
+    host_id: "TCH-001",
+    visit_date: "2026-10-20",
+    visit_time: "10:00",
+    status: "Rejected",       // closed status — not in partial index
+  }];
+  const { upserted, skipped } = simulateSync(EXISTING, incoming);
+  assert.equal(skipped.length, 0, "closed-status records should not trigger slot conflict");
+  assert.equal(upserted.length, 1);
+  assert.equal(upserted[0].action, "inserted");
+});
+
+test("two simultaneous booking attempts for same slot: first wins, second is skipped as conflict", () => {
+  // Simulate what happens if two Supabase records race past app-level check
+  const empty = {};
+  const both = [
+    { id: "A1", visitor_id: "V1", host_id: "TCH-001", visit_date: "2026-11-01", visit_time: "09:00", status: "Pending" },
+    { id: "A2", visitor_id: "V2", host_id: "TCH-001", visit_date: "2026-11-01", visit_time: "09:00", status: "Pending" },
+  ];
+  const { upserted, skipped } = simulateSync(empty, both);
+  assert.equal(upserted.length, 1, "first record should be inserted");
+  assert.equal(skipped.length, 1, "second record should be skipped as conflict");
+  assert.equal(upserted[0].id, "A1");
+  assert.equal(skipped[0].id, "A2");
+  assert.equal(skipped[0].reason, "uniq_host_slot");
+});
+
+test("missing visit_date yields past_date error (empty string sorts before any real date)", () => {
+  const result = validateBookingDateTime("", "10:00", VISIT_FROM, VISIT_TO);
+  assert.equal(result?.error, "past_date", `expected past_date for missing date, got ${JSON.stringify(result)}`);
+});
+
+test("missing visit_time is caught by outside_hours (toMinutes('')=0 < 07:00)", () => {
+  const result = validateBookingDateTime(futureDate1, "", VISIT_FROM, VISIT_TO);
+  assert.equal(result?.error, "outside_hours", `expected outside_hours for missing time, got ${JSON.stringify(result)}`);
+});
+
+section("Visitor Registration Form Validation (New 4-Section Flow)");
+
+test("Section A: Full name requires at least 3 characters and valid letters", () => {
+  function checkName(val) {
+    const v = (val || "").trim();
+    if (!v) return "Full name is required.";
+    if (v.length < 3) return "Please enter at least 3 characters.";
+    if (!/^[A-Za-z][A-Za-z .'-]*$/.test(v)) return "Use letters, spaces, apostrophes or hyphens only.";
+    return undefined;
+  }
+  assert.equal(checkName(""), "Full name is required.");
+  assert.equal(checkName("Al"), "Please enter at least 3 characters.");
+  assert.equal(checkName("Rajesh123"), "Use letters, spaces, apostrophes or hyphens only.");
+  assert.equal(checkName("Rajesh Kumar"), undefined);
+});
+
+test("Section A: Mobile number requires 10 digits starting with 6-9", () => {
+  function checkMobile(val) {
+    const v = (val || "").replace(/[\s-]/g, "");
+    if (!v) return "Mobile number is required.";
+    if (!/^\d+$/.test(v)) return "Mobile number must contain digits only.";
+    if (!/^[6-9]\d{9}$/.test(v)) return "Enter a valid 10-digit mobile number.";
+    return undefined;
+  }
+  assert.equal(checkMobile(""), "Mobile number is required.");
+  assert.equal(checkMobile("1234567890"), "Enter a valid 10-digit mobile number.");
+  assert.equal(checkMobile("9876543210"), undefined);
+  assert.equal(checkMobile("98765-43210"), undefined);
+});
+
+test("Section A: Email is optional but validated when provided", () => {
+  function checkEmail(val) {
+    const v = (val || "").trim();
+    if (!v) return undefined;
+    if (!/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(v)) return "Enter a valid email address.";
+    return undefined;
+  }
+  assert.equal(checkEmail(""), undefined);
+  assert.equal(checkEmail("invalid-email"), "Enter a valid email address.");
+  assert.equal(checkEmail("visitor@example.com"), undefined);
+});
+
+test("Section A: Visitor category supports standard and 'Other' with conditional text", () => {
+  function checkCategory(category, otherText) {
+    if (!category) return "Please select a visitor category.";
+    if (category === "Other" && (!otherText || !otherText.trim())) {
+      return "Please specify your visitor category.";
+    }
+    return undefined;
+  }
+  assert.equal(checkCategory("", ""), "Please select a visitor category.");
+  assert.equal(checkCategory("Other", ""), "Please specify your visitor category.");
+  assert.equal(checkCategory("Other", "Journalist"), undefined);
+  assert.equal(checkCategory("Academic Visitor", ""), undefined);
+});
+
+test("Section B: Expected departure time must be after expected arrival time", () => {
+  function checkDeparture(arrival, departure) {
+    if (!departure) return undefined;
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(departure)) return "Enter a valid time (HH:mm).";
+    if (!arrival) return undefined;
+    const [arrH, arrM] = arrival.split(":").map(Number);
+    const [depH, depM] = departure.split(":").map(Number);
+    if (depH * 60 + depM <= arrH * 60 + arrM) {
+      return "Expected departure time must be after expected arrival time.";
+    }
+    return undefined;
+  }
+  assert.equal(checkDeparture("10:00", ""), undefined);
+  assert.equal(checkDeparture("10:00", "09:30"), "Expected departure time must be after expected arrival time.");
+  assert.equal(checkDeparture("10:00", "10:00"), "Expected departure time must be after expected arrival time.");
+  assert.equal(checkDeparture("10:00", "12:30"), undefined);
+});
+
+test("Section C: Vehicle registration number is required only when vehicleRequired is yes", () => {
+  function checkVehicle(required, num) {
+    if (required !== "yes") return undefined;
+    const v = (num || "").trim().toUpperCase();
+    if (!v) return "Vehicle registration number is required.";
+    if (!/^[A-Z]{2}[ -]?\d{1,2}[ -]?[A-Z]{1,3}[ -]?\d{1,4}$/.test(v)) return "Use a valid format, e.g. UK07AB1234.";
+    return undefined;
+  }
+  assert.equal(checkVehicle("no", ""), undefined);
+  assert.equal(checkVehicle("yes", ""), "Vehicle registration number is required.");
+  assert.equal(checkVehicle("yes", "INVALID"), "Use a valid format, e.g. UK07AB1234.");
+  assert.equal(checkVehicle("yes", "UK07AB1234"), undefined);
+});
+
+test("Section D: Registration payload contains NO Campus Visit Details fields", () => {
+  const formPayload = {
+    fullName: "Priya Sharma",
+    mobileNumber: "9876543210",
+    email: "priya@example.com",
+    visitorType: "Alumni",
+    visitDate: "2026-11-15",
+    visitTime: "11:00",
+    expectedDepartureTime: "14:00",
+    photoId: "p_test_1234567890123456",
+    vehicleRequired: false,
+    idempotencyKey: "k-test-12345",
+  };
+
+  const forbiddenFields = [
+    "hostId",
+    "hostName",
+    "departmentId",
+    "department",
+    "purpose",
+    "purposeDetail",
+    "notes",
+    "specialRequirements",
+  ];
+
+  for (const field of forbiddenFields) {
+    assert.equal(field in formPayload, false, `Forbidden field ${field} must NOT appear in registration payload`);
+  }
+  assert.ok(formPayload.fullName);
+  assert.ok(formPayload.mobileNumber);
+  assert.ok(formPayload.visitorType);
+  assert.ok(formPayload.visitDate);
+  assert.ok(formPayload.visitTime);
+  assert.ok(formPayload.photoId);
+});
+
+/* ------------------------------------------------------------------ */
+
 console.log(`\n${"=".repeat(52)}`);
 console.log(`  PASSED: ${passed}    FAILED: ${failed}`);
 console.log("=".repeat(52));

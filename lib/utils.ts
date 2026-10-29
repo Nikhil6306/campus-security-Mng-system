@@ -10,6 +10,68 @@ export function cn(...inputs: ClassValue[]) {
  * as 24h `HH:mm`, so every display path goes through these helpers.
  * ------------------------------------------------------------------ */
 
+/**
+ * The IANA timezone for the campus (Dev Sanskriti Vishwavidyalaya, Haridwar).
+ * All booking date / time comparisons MUST use this timezone so that a visitor
+ * on the public portal and the server agree on what "today" and "now" mean,
+ * regardless of the server's own locale or UTC offset.
+ */
+export const CAMPUS_TZ = "Asia/Kolkata" as const;
+
+/**
+ * Returns a `Date` whose fields (getFullYear / getMonth / getDate / getHours /
+ * getMinutes) match the current campus-local clock when read via
+ * `Intl.DateTimeFormat`.  The returned `Date` itself is still a UTC timestamp
+ * internally, but it is only ever used to extract `yyyy-mm-dd` or `HH:mm`
+ * strings via {@link toDateKey} / {@link campusMinutesNow}, never compared
+ * numerically against another UTC timestamp.
+ */
+export function nowInCampusTz(): { date: string; hours: number; minutes: number } {
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: CAMPUS_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  const parts = Object.fromEntries(
+    fmt.formatToParts(new Date()).map((p) => [p.type, p.value]),
+  ) as Record<string, string>;
+  // en-CA produces yyyy-mm-dd which avoids locale-specific separators.
+  const date = `${parts.year}-${parts.month}-${parts.day}`;
+  // `hour12: false` may produce "24" for midnight on some platforms — normalise.
+  const hours = Number(parts.hour) % 24;
+  const minutes = Number(parts.minute);
+  return { date, hours, minutes };
+}
+
+/** Campus-local `yyyy-mm-dd` for today, with an optional day offset. */
+export function todayInCampusTz(offsetDays = 0): string {
+  if (offsetDays === 0) return nowInCampusTz().date;
+  // Apply offset in UTC-day arithmetic and re-localise.
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + offsetDays);
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: CAMPUS_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  return fmt.format(d);
+}
+
+/** Current campus-local time expressed as minutes past midnight. */
+export function campusMinutesNow(): number {
+  const { hours, minutes } = nowInCampusTz();
+  return hours * 60 + minutes;
+}
+
+/**
+ * @deprecated Prefer {@link todayInCampusTz} for booking logic — this helper
+ * uses the server's local clock, which is UTC on most deployments.
+ */
 export function todayISO(offsetDays = 0): string {
   const d = new Date();
   d.setDate(d.getDate() + offsetDays);

@@ -28,6 +28,7 @@ const TYPE_LABELS: Record<NotificationType, string> = {
   vehicle: "Vehicle movement",
   meeting: "Meeting update",
   system: "System",
+  gate: "Gate notification",
 };
 
 type TabValue = "all" | "unread" | "read";

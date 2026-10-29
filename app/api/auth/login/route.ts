@@ -23,7 +23,7 @@ export async function POST(request: Request) {
   try {
     bootstrap();
     const input = parse(loginSchema, await readBody(request));
-    const { session, token } = signIn(input.email, input.password);
+    const { session, token } = await signIn(input.email, input.password);
 
     if (input.expectedRole) {
       const allowed =

@@ -6,20 +6,21 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export const colors = {
-  navy: '#102442',
-  navyDeep: '#0B1B34',
-  blue: '#2369E8',
-  blueSoft: '#EAF1FF',
+  navy: '#172033',
+  navyDeep: '#0D1521',
+  blue: '#3A86FF',
+  blueStrong: '#2563C7',
+  blueSoft: '#F3F7FF',
   canvas: '#F4F7FB',
   white: '#FFFFFF',
-  ink: '#192B45',
-  muted: '#718096',
-  line: '#E4EAF2',
-  green: '#16875D',
+  ink: '#172033',
+  muted: '#5F6F86',
+  line: '#DCE5F2',
+  green: '#168A55',
   greenSoft: '#E8F7F0',
-  red: '#D93A46',
+  red: '#D64545',
   redSoft: '#FFF0F0',
-  amber: '#A46510',
+  amber: '#D98A00',
   amberSoft: '#FFF5E5',
 };
 

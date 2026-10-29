@@ -30,6 +30,7 @@ const typeConfig: Record<NotificationType, { icon: LucideIcon; className: string
   incident: { icon: AlertTriangle, className: "bg-destructive/12 text-destructive" },
   emergency: { icon: CircleAlert, className: "bg-destructive text-destructive-foreground" },
   vehicle: { icon: Car, className: "bg-accent/12 text-accent" },
+  gate: { icon: LogIn, className: "bg-accent/12 text-accent" },
   meeting: { icon: CalendarClock, className: "bg-primary/10 text-primary" },
   system: { icon: Info, className: "bg-muted text-muted-foreground" },
 };

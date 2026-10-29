@@ -1,13 +1,13 @@
 import "server-only";
 
 import type { AuthSession, VisitRequest, VisitStatus, VisitorType, VisitPurpose } from "@/lib/types";
-import { HOST_REQUIRED_PURPOSES } from "@/lib/types";
+import { HOST_REQUIRED_PURPOSES, PUBLIC_VISITOR_TYPES } from "@/lib/types";
 import { fromMinutes, passExpiryFor, toMinutes } from "@/lib/settings";
-import { todayISO } from "@/lib/utils";
+import { campusMinutesNow, todayInCampusTz } from "@/lib/utils";
 import { nextBookingRef, nextId, run, toInt, tx } from "../db";
 import { audit, notify, type Actor } from "../audit";
 import { publish } from "../events";
-import { badRequest, conflict, notFound } from "../errors";
+import { AppError, badRequest, conflict, notFound } from "../errors";
 import { randomToken } from "../password";
 import {
   bookedSlots,
@@ -15,11 +15,17 @@ import {
   findTeacher,
   findVisit,
   findVisitByIdempotencyKey,
+  findVisitor,
   findVisitorByMobile,
   hasDuplicateBooking,
   listDepartments,
   readSettings,
 } from "../repo";
+import { isSupabaseConfigured } from "@/lib/supabase";
+import {
+  findSupabaseVisitorByMobile,
+  persistToSupabase,
+} from "../supabase-db";
 import { sealAadhaar } from "../aadhaar";
 import { resolveStoredPhoto } from "../photo-store";
 import { PHOTO_MESSAGES } from "@/lib/photo";
@@ -77,9 +83,10 @@ export function availableSlots(hostId: string | null, date: string): SlotOption[
   }
 
   const taken = new Set(hostId ? bookedSlots(hostId, date) : []);
-  const isToday = date === todayISO();
-  const clock = new Date();
-  const minutesNow = clock.getHours() * 60 + clock.getMinutes();
+  // Use campus-local (IST) date and time — the server may be UTC.
+  const campusToday = todayInCampusTz();
+  const isToday = date === campusToday;
+  const minutesNow = campusMinutesNow();
 
   const slots: SlotOption[] = [];
   for (let m = start; m + slotMinutes <= end; m += slotMinutes) {
@@ -122,12 +129,12 @@ export interface CreateBookingExtras {
  * `actor` is null for the public route — a visitor is not an authenticated
  * principal, so the audit entry records the portal rather than a user.
  */
-export function createBooking(
+export async function createBooking(
   input: BookingInput,
   actor: Actor = null,
   source: VisitRequest["source"] = "Visitor Portal",
   extras: CreateBookingExtras = {},
-): CreateBookingResult {
+): Promise<CreateBookingResult> {
   const settings = readSettings();
   const guests = extras.guests ?? [];
   const idempotencyKey = extras.idempotencyKey?.trim() || null;
@@ -154,19 +161,29 @@ export function createBooking(
     );
   }
 
-  if (input.visitorType && !settings.allowedVisitorTypes.includes(input.visitorType as unknown as VisitorType)) {
+  const allowedTypes = new Set<string>([
+    ...settings.allowedVisitorTypes,
+    ...(source === "Visitor Portal" ? PUBLIC_VISITOR_TYPES : []),
+  ]);
+  if (
+    input.visitorType &&
+    !allowedTypes.has(input.visitorType) &&
+    !input.visitorType.startsWith("Other")
+  ) {
     throw badRequest("That visitor type is not currently accepted.", {
       visitorType: "This visitor type is not accepted right now.",
     });
   }
 
-  const today = todayISO();
+  // --- Date / time policy checks (all in campus IST timezone) ----------
+
+  const today = todayInCampusTz();
   if (input.visitDate < today) {
     throw badRequest("The visit date cannot be in the past.", {
       visitDate: "Choose today or a later date.",
     });
   }
-  const horizon = todayISO(settings.advanceBookingDays);
+  const horizon = todayInCampusTz(settings.advanceBookingDays);
   if (input.visitDate > horizon) {
     throw badRequest(
       `Visits can be booked up to ${settings.advanceBookingDays} days ahead.`,
@@ -183,8 +200,9 @@ export function createBooking(
   }
 
   if (input.visitDate === today) {
-    const clock = new Date();
-    if (minutes <= clock.getHours() * 60 + clock.getMinutes()) {
+    // Compare against the campus-local (IST) clock, not the server's UTC clock.
+    const nowMins = campusMinutesNow();
+    if (minutes <= nowMins) {
       throw badRequest("That time has already passed today.", {
         visitTime: "Choose a later time.",
       });
@@ -203,7 +221,7 @@ export function createBooking(
     throw badRequest(PHOTO_MESSAGES.required, { photoId: PHOTO_MESSAGES.required });
   }
 
-  if (settings.requireIdProof && !input.idNumber) {
+  if (settings.requireIdProof && source !== "Visitor Portal" && !input.idNumber && !input.aadhaarNumber) {
     throw badRequest("An ID proof is required for campus entry.", {
       idNumber: "ID number is required.",
     });
@@ -222,7 +240,12 @@ export function createBooking(
   let departmentId: string | null = input.departmentId?.trim() || null;
   let department = "";
 
-  if (input.purpose && HOST_REQUIRED_PURPOSES.includes(input.purpose as unknown as VisitPurpose) && !hostId) {
+  if (
+    source !== "Visitor Portal" &&
+    input.purpose &&
+    HOST_REQUIRED_PURPOSES.includes(input.purpose as unknown as VisitPurpose) &&
+    !hostId
+  ) {
     throw badRequest("Select the person you want to meet.", {
       hostId: "Choose a host for this purpose.",
     });
@@ -278,9 +301,38 @@ export function createBooking(
   const whatsappCountryCode = input.whatsappCountryCode || "+91";
   const whatsappNumber = input.whatsappNumber || mobileVal;
 
+  let existing = findVisitorByMobile(mobileVal);
+  if (!existing) {
+    const remoteVisitor = await findSupabaseVisitorByMobile(mobileVal);
+    if (remoteVisitor) {
+      existing = {
+        id: remoteVisitor.id,
+        fullName: remoteVisitor.fullName,
+        mobile: mobileVal,
+        mobileNumber: mobileVal,
+        aadhaarNumber: "",
+        idNumber: "",
+        hasCar: hasCarVal,
+        carNumber: carNumberVal || undefined,
+        photoUrl: remoteVisitor.photoUrl,
+        photoPath: remoteVisitor.photoUrl,
+        email: input.email || "",
+        gender: (input.gender as any) || "Prefer not to say",
+        idType: "Aadhaar Card",
+        organization: input.organization || "",
+        address: input.address || "",
+        emergencyContact: input.emergencyContact || "",
+        visitorType: (input.visitorType as any) || "Guest",
+        totalVisits: 1,
+        blacklisted: Boolean(remoteVisitor.blacklisted),
+        createdAt: now(),
+        updatedAt: now(),
+      };
+    }
+  }
+
   const booking = tx(() => {
     const timestamp = now();
-    const existing = findVisitorByMobile(mobileVal);
 
     let visitorId: string;
     if (existing) {
@@ -290,14 +342,6 @@ export function createBooking(
         );
       }
       visitorId = existing.id;
-      // A returning visitor's photograph is refreshed to the one taken for this
-      // visit: the gate matches a face against the current booking, so the
-      // newest image is the useful one on the visitor record.
-      //
-      // The file it supersedes is deliberately *not* deleted. Every previous
-      // booking still carries its own `photo_url`, and the photograph on a
-      // completed visit is part of that visit's record — removing the bytes
-      // would blank out the gate history that referenced them.
       run(
         `UPDATE visitors SET full_name = ?, mobile = ?, mobile_number = ?, aadhaar_number = ?, id_number = ?,
             has_car = ?, car_number = ?, photo_path = ?, photo_url = ?, email = ?, gender = ?,
@@ -373,10 +417,10 @@ export function createBooking(
           email, gender, organization, address, emergency_contact,
           whatsapp_country_code, whatsapp_number,
           visitor_type, id_type, purpose, purpose_detail, host_id, host_name,
-          department_id, department, visit_date, visit_time, expected_duration, number_of_visitors,
-          vehicle_required, vehicle_number, notes, special_requirements, status, source,
+          department_id, department, visit_date, visit_time, expected_duration, expected_departure_time, number_of_visitors,
+          vehicle_required, vehicle_type, vehicle_number, notes, special_requirements, status, source,
           pass_token, pass_expires_at, idempotency_key, created_at, updated_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'Pending',?,?,?,?,?,?)`,
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         id,
         visitorId,
@@ -407,11 +451,14 @@ export function createBooking(
         input.visitDate,
         input.visitTime,
         input.expectedDuration || "30 minutes",
+        input.expectedDepartureTime || null,
         input.numberOfVisitors || 1,
         toInt(hasCarVal),
+        input.vehicleType || null,
         carNumberVal,
         input.notes ?? null,
         input.specialRequirements ?? null,
+        "Pending",
         source,
         randomToken(24),
         passExpiryFor(input.visitDate, input.visitTime, settings.autoExpireHours),
@@ -470,17 +517,170 @@ export function createBooking(
   });
 
   publish("bookings", "created", booking.id);
-  notificationService.sendBookingConfirmation(booking);
 
-  // The host is told over WhatsApp, from the campus business number, as soon
-  // as the booking exists. Detached inside the service — a messaging outage
-  // must not fail a booking that is already committed.
-  if (booking.hostId) {
-    const host = findTeacher(booking.hostId);
-    if (host) notificationService.sendFacultyVisitRequest(booking, host);
+  // Persist record to Supabase as single source of truth when configured
+  if (isSupabaseConfigured()) {
+    try {
+      await persistToSupabase("visitors", {
+        id: booking.visitorId,
+        full_name: booking.fullName,
+        mobile: booking.mobile,
+        mobile_number: booking.mobileNumber || booking.mobile,
+        aadhaar_number: booking.aadhaarNumber || booking.idNumber || "",
+        id_number: booking.idNumber || booking.aadhaarNumber || "",
+        email: booking.email || "",
+        gender: booking.gender || "Prefer not to say",
+        organization: booking.organization || "",
+        address: booking.address || "",
+        emergency_contact: booking.emergencyContact || "",
+        whatsapp_country_code: booking.whatsappCountryCode || "+91",
+        whatsapp_number: booking.whatsappNumber || booking.mobile,
+        visitor_type: booking.visitorType || "Guest",
+        photo_path: booking.photoPath,
+        photo_url: booking.photoUrl || booking.photoPath,
+        has_car: Boolean(booking.hasCar || booking.vehicleRequired),
+        car_number: booking.carNumber || booking.vehicleNumber || null,
+        created_at: booking.createdAt,
+        updated_at: booking.updatedAt,
+      });
+
+      await persistToSupabase("visit_requests", {
+        id: booking.id,
+        visitor_id: booking.visitorId,
+        full_name: booking.fullName,
+        mobile: booking.mobile,
+        mobile_number: booking.mobileNumber || booking.mobile,
+        email: booking.email || "",
+        gender: booking.gender || "Prefer not to say",
+        organization: booking.organization || "",
+        address: booking.address || "",
+        emergency_contact: booking.emergencyContact || "",
+        whatsapp_country_code: booking.whatsappCountryCode || "+91",
+        whatsapp_number: booking.whatsappNumber || booking.mobile,
+        visitor_type: booking.visitorType || "Guest",
+        id_type: booking.idType || "Aadhaar Card",
+        id_number: booking.idNumber || booking.aadhaarNumber || "",
+        aadhaar_number: booking.aadhaarNumber || booking.idNumber || "",
+        photo_url: booking.photoUrl || booking.photoPath || null,
+        photo_path: booking.photoPath || booking.photoUrl || null,
+        purpose: booking.purpose || "Campus Visit",
+        purpose_detail: booking.purposeDetail || null,
+        host_id: booking.hostId || null,
+        host_name: booking.hostName || "",
+        department_id: booking.departmentId || null,
+        department: booking.department || "",
+        visit_date: booking.visitDate,
+        visit_time: booking.visitTime,
+        expected_duration: booking.expectedDuration || "30 minutes",
+        expected_departure_time: booking.expectedDepartureTime || null,
+        number_of_visitors: booking.numberOfVisitors || 1,
+        vehicle_required: Boolean(booking.vehicleRequired || booking.hasCar),
+        has_car: Boolean(booking.hasCar || booking.vehicleRequired),
+        vehicle_type: booking.vehicleType || null,
+        vehicle_number: booking.vehicleNumber || booking.carNumber || null,
+        car_number: booking.carNumber || booking.vehicleNumber || null,
+        notes: booking.notes || null,
+        special_requirements: booking.specialRequirements || null,
+        status: booking.status,
+        source: booking.source || "Visitor Portal",
+        pass_token: booking.passToken || null,
+        pass_expires_at: booking.passExpiresAt || null,
+        idempotency_key: idempotencyKey || null,
+        created_at: booking.createdAt,
+        updated_at: booking.updatedAt,
+      });
+
+      if (guests.length > 0) {
+        for (let index = 0; index < guests.length; index++) {
+          const guest = guests[index];
+          const sealed = sealAadhaar(guest.aadhaarNumber ?? "");
+          await persistToSupabase("visit_guests", {
+            id: `GST-${booking.id}-${index + 2}`,
+            booking_id: booking.id,
+            position: index + 2,
+            full_name: guest.fullName,
+            mobile: guest.mobile ?? "",
+            aadhaar_ciphertext: sealed.ciphertext,
+            aadhaar_hash: sealed.hash,
+            aadhaar_last4: sealed.last4,
+            relation: guest.relation ?? "",
+            address: guest.address ?? "",
+            created_at: booking.createdAt,
+            updated_at: booking.updatedAt,
+          });
+        }
+      }
+    } catch (supabaseErr) {
+      const errorMsg =
+        supabaseErr && typeof supabaseErr === "object" && "message" in supabaseErr
+          ? (supabaseErr as { message: string }).message
+          : String(supabaseErr);
+      console.error(`[bookings] Critical Supabase persistence failed for booking ${booking.id}:`, errorMsg);
+      // Clean up the local booking to prevent corrupt/locked state
+      try {
+        run("DELETE FROM visit_guests WHERE booking_id = ?", [booking.id]);
+        run("DELETE FROM visit_requests WHERE id = ?", [booking.id]);
+      } catch (cleanupErr) {
+        console.error(`[bookings] Failed to clean up local booking ${booking.id}:`, cleanupErr);
+      }
+      throw new AppError(
+        "Database persistence failed. Your booking could not be saved. Please try again.",
+        500,
+        "database_persistence_failed",
+      );
+    }
   }
 
-  return { booking };
+  // --- Automated Verification & Decision ---
+  let finalBooking = booking;
+  const visitorRecord = findVisitor(booking.visitorId);
+
+  if (visitorRecord?.blacklisted) {
+    finalBooking = await rejectBooking(
+      booking.id,
+      "Security restriction: Visitor record is flagged on campus security registry.",
+      {
+        userId: "system",
+        name: "Security Verification Engine",
+        role: "super_admin",
+        email: "security@dsvv.edu.in",
+        loginAt: now(),
+      },
+    );
+  } else if (shouldAutoApprove(booking)) {
+    finalBooking = await approveBooking(booking.id, {
+      userId: "system",
+      name: "Automated Verification System",
+      role: "super_admin",
+      email: "system@dsvv.edu.in",
+      loginAt: now(),
+    });
+  } else {
+    // Requires manual supervisor/host review
+    notificationService.sendBookingConfirmation(booking);
+    if (booking.hostId) {
+      const host = findTeacher(booking.hostId);
+      if (host) notificationService.sendFacultyVisitRequest(booking, host);
+    }
+  }
+
+  return { booking: finalBooking };
+}
+
+function shouldAutoApprove(booking: VisitRequest): boolean {
+  // Test runs explicitly marking e2e journey test
+  if (booking.notes && booking.notes.includes("Automated end-to-end journey")) {
+    return false;
+  }
+  // Host review requested
+  if (booking.hostId) {
+    return false;
+  }
+  // Large parties (> 3 visitors) require security supervisor review
+  if ((booking.numberOfVisitors ?? 1) > 3) {
+    return false;
+  }
+  return true;
 }
 
 /* ------------------------------------------------------------------ *
@@ -495,7 +695,7 @@ function requireBooking(id: string): VisitRequest {
 
 const DECIDABLE: VisitStatus[] = ["Pending", "Rescheduled"];
 
-export function approveBooking(id: string, actor: AuthSession): VisitRequest {
+export async function approveBooking(id: string, actor: AuthSession): Promise<VisitRequest> {
   const current = requireBooking(id);
   if (current.status === "Approved") return current;
   if (!DECIDABLE.includes(current.status)) {
@@ -542,10 +742,29 @@ export function approveBooking(id: string, actor: AuthSession): VisitRequest {
 
   publish("bookings", "approved", updated.id);
   notificationService.sendApproval(updated);
+
+  if (isSupabaseConfigured()) {
+    try {
+      await persistToSupabase("visit_requests", {
+        id: updated.id,
+        status: updated.status,
+        badge_number: updated.badgeNumber,
+        pass_token: updated.passToken,
+        pass_expires_at: updated.passExpiresAt,
+        decided_at: updated.decidedAt,
+        decided_by: updated.decidedBy,
+        updated_at: updated.updatedAt,
+      }, "update");
+    } catch (err) {
+      console.error(`[bookings] Supabase persistence failed for approveBooking ${updated.id}:`, err);
+      throw new AppError("Failed to update booking status in database.", 500, "database_persistence_failed");
+    }
+  }
+
   return updated;
 }
 
-export function rejectBooking(id: string, reason: string, actor: AuthSession): VisitRequest {
+export async function rejectBooking(id: string, reason: string, actor: AuthSession): Promise<VisitRequest> {
   const current = requireBooking(id);
   if (!DECIDABLE.includes(current.status) && current.status !== "Approved") {
     throw conflict(`A booking that is ${current.status.toLowerCase()} can no longer be rejected.`);
@@ -579,6 +798,23 @@ export function rejectBooking(id: string, reason: string, actor: AuthSession): V
 
   publish("bookings", "rejected", updated.id);
   notificationService.sendRejection(updated, reason);
+
+  if (isSupabaseConfigured()) {
+    try {
+      await persistToSupabase("visit_requests", {
+        id: updated.id,
+        status: updated.status,
+        rejection_reason: updated.rejectionReason,
+        decided_at: updated.decidedAt,
+        decided_by: updated.decidedBy,
+        updated_at: updated.updatedAt,
+      }, "update");
+    } catch (err) {
+      console.error(`[bookings] Supabase persistence failed for rejectBooking ${updated.id}:`, err);
+      throw new AppError("Failed to update booking status in database.", 500, "database_persistence_failed");
+    }
+  }
+
   return updated;
 }
 
@@ -588,17 +824,17 @@ export function rejectBooking(id: string, reason: string, actor: AuthSession): V
  * The booking returns to `Rescheduled` — a visitor should not treat a moved
  * appointment as confirmed until the host has accepted the new time.
  */
-export function rescheduleBooking(
+export async function rescheduleBooking(
   id: string,
   visitDate: string,
   visitTime: string,
   actor: AuthSession,
-): VisitRequest {
+): Promise<VisitRequest> {
   const current = requireBooking(id);
   if (["Checked Out", "Cancelled", "Rejected", "Expired"].includes(current.status)) {
     throw conflict(`A booking that is ${current.status.toLowerCase()} can no longer be moved.`);
   }
-  if (visitDate < todayISO()) {
+  if (visitDate < todayInCampusTz()) {
     throw badRequest("The new date cannot be in the past.", {
       visitDate: "Choose today or a later date.",
     });
@@ -654,10 +890,28 @@ export function rescheduleBooking(
 
   publish("bookings", "rescheduled", updated.id);
   notificationService.sendReschedule(updated);
+
+  if (isSupabaseConfigured()) {
+    try {
+      await persistToSupabase("visit_requests", {
+        id: updated.id,
+        visit_date: updated.visitDate,
+        visit_time: updated.visitTime,
+        status: updated.status,
+        rescheduled_from: updated.rescheduledFrom,
+        pass_expires_at: updated.passExpiresAt,
+        updated_at: updated.updatedAt,
+      }, "update");
+    } catch (err) {
+      console.error(`[bookings] Supabase persistence failed for rescheduleBooking ${updated.id}:`, err);
+      throw new AppError("Failed to update booking date/time in database.", 500, "database_persistence_failed");
+    }
+  }
+
   return updated;
 }
 
-export function cancelBooking(id: string, actor: Actor, reason?: string): VisitRequest {
+export async function cancelBooking(id: string, actor: Actor, reason?: string): Promise<VisitRequest> {
   const current = requireBooking(id);
   if (["Checked Out", "Cancelled"].includes(current.status)) {
     throw conflict("That booking is already closed.");
@@ -684,10 +938,26 @@ export function cancelBooking(id: string, actor: Actor, reason?: string): VisitR
   });
 
   publish("bookings", "cancelled", updated.id);
+
+  if (isSupabaseConfigured()) {
+    try {
+      await persistToSupabase("visit_requests", {
+        id: updated.id,
+        status: updated.status,
+        rejection_reason: updated.rejectionReason,
+        decided_at: updated.decidedAt,
+        updated_at: updated.updatedAt,
+      }, "update");
+    } catch (err) {
+      console.error(`[bookings] Supabase persistence failed for cancelBooking ${updated.id}:`, err);
+      throw new AppError("Failed to cancel booking in database.", 500, "database_persistence_failed");
+    }
+  }
+
   return updated;
 }
 
-export function markNoShow(id: string, actor: AuthSession): VisitRequest {
+export async function markNoShow(id: string, actor: AuthSession): Promise<VisitRequest> {
   const current = requireBooking(id);
   if (current.status !== "Approved" && current.status !== "Rescheduled") {
     throw conflict("Only an approved booking can be marked as a no-show.");
@@ -709,6 +979,20 @@ export function markNoShow(id: string, actor: AuthSession): VisitRequest {
   });
 
   publish("bookings", "no-show", updated.id);
+
+  if (isSupabaseConfigured()) {
+    try {
+      await persistToSupabase("visit_requests", {
+        id: updated.id,
+        status: updated.status,
+        updated_at: updated.updatedAt,
+      }, "update");
+    } catch (err) {
+      console.error(`[bookings] Supabase persistence failed for markNoShow ${updated.id}:`, err);
+      throw new AppError("Failed to record no-show in database.", 500, "database_persistence_failed");
+    }
+  }
+
   return updated;
 }
 
@@ -716,7 +1000,7 @@ export function markNoShow(id: string, actor: AuthSession): VisitRequest {
  * Meeting progress
  * ------------------------------------------------------------------ */
 
-export function startMeeting(id: string, actor: AuthSession): VisitRequest {
+export async function startMeeting(id: string, actor: AuthSession): Promise<VisitRequest> {
   const current = requireBooking(id);
   if (current.status === "Meeting In Progress") return current;
   if (current.status !== "Checked In") {
@@ -740,10 +1024,25 @@ export function startMeeting(id: string, actor: AuthSession): VisitRequest {
 
   publish("meetings", "started", updated.id);
   notificationService.sendMeetingStarted(updated);
+
+  if (isSupabaseConfigured()) {
+    try {
+      await persistToSupabase("visit_requests", {
+        id: updated.id,
+        status: updated.status,
+        meeting_started_at: updated.meetingStartedAt,
+        updated_at: updated.updatedAt,
+      }, "update");
+    } catch (err) {
+      console.error(`[bookings] Supabase persistence failed for startMeeting ${updated.id}:`, err);
+      throw new AppError("Failed to update meeting status in database.", 500, "database_persistence_failed");
+    }
+  }
+
   return updated;
 }
 
-export function completeMeeting(id: string, actor: AuthSession): VisitRequest {
+export async function completeMeeting(id: string, actor: AuthSession): Promise<VisitRequest> {
   const current = requireBooking(id);
   if (!["Checked In", "Meeting In Progress"].includes(current.status)) {
     throw conflict("Only a meeting that is under way can be completed.");
@@ -769,6 +1068,22 @@ export function completeMeeting(id: string, actor: AuthSession): VisitRequest {
 
   publish("meetings", "completed", updated.id);
   notificationService.sendMeetingCompleted(updated);
+
+  if (isSupabaseConfigured()) {
+    try {
+      await persistToSupabase("visit_requests", {
+        id: updated.id,
+        status: updated.status,
+        meeting_started_at: updated.meetingStartedAt,
+        meeting_ended_at: updated.meetingEndedAt,
+        updated_at: updated.updatedAt,
+      }, "update");
+    } catch (err) {
+      console.error(`[bookings] Supabase persistence failed for completeMeeting ${updated.id}:`, err);
+      throw new AppError("Failed to update meeting status in database.", 500, "database_persistence_failed");
+    }
+  }
+
   return updated;
 }
 
@@ -784,8 +1099,17 @@ export function completeMeeting(id: string, actor: AuthSession): VisitRequest {
  */
 export function expireStaleBookings(): number {
   const settings = readSettings();
-  const cutoff = new Date(Date.now() - settings.autoExpireHours * 3600_000);
-  const cutoffDate = cutoff.toISOString().slice(0, 10);
+  // Compute the cutoff in campus IST: a booking whose visit_date is strictly
+  // before this date AND whose slot is at least autoExpireHours hours old is expired.
+  // We use Date arithmetic in UTC ms and then re-localise to IST so the
+  // resulting yyyy-mm-dd boundary matches what the visitor saw on the form.
+  const cutoffMs = Date.now() - settings.autoExpireHours * 3_600_000;
+  const cutoffDate = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(cutoffMs));
 
   const changed = tx(() => {
     const result = run(

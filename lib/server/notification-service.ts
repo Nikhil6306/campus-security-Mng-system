@@ -97,8 +97,12 @@ export function passUrlFor(booking: VisitRequest): string {
   // The token is the unguessable half; the reference is what the visitor can
   // quote at the desk, so the link carries the token when one has been issued.
   const reference = booking.passToken ?? booking.id;
-  return `${appOrigin()}/visitor/pass/${encodeURIComponent(reference)}`;
+  const mobileParam = (booking.whatsappNumber || booking.mobileNumber || booking.mobile || "").replace(/[\s-]/g, "");
+  const query = mobileParam ? `?mobile=${encodeURIComponent(mobileParam)}` : "";
+  return `${appOrigin()}/visitor/pass/${encodeURIComponent(reference)}${query}`;
 }
+
+import { generateFacultyDecisionTokens } from "./services/approval-tokens";
 
 /**
  * Hands one lifecycle event to the WhatsApp service.
@@ -114,6 +118,8 @@ function whatsapp(
     rejectionReason?: string;
     dedupeSalt?: string;
     reviewUrl?: string;
+    acceptUrl?: string;
+    rejectUrl?: string;
     visitorContact?: string;
     to?: { countryCode: string; number: string };
     audience?: "visitor" | "faculty";
@@ -161,6 +167,19 @@ export const notificationService = {
     const number = (host.whatsappNumber || host.phone || "").replace(/[ -]/g, "");
     if (!number) return;
 
+    let acceptUrl: string | undefined;
+    let rejectUrl: string | undefined;
+    let reviewUrl = reviewUrlFor(booking);
+
+    try {
+      const tokens = generateFacultyDecisionTokens(booking, host);
+      acceptUrl = tokens.acceptUrl;
+      rejectUrl = tokens.rejectUrl;
+      reviewUrl = tokens.reviewUrl;
+    } catch (err) {
+      console.error("[notification] failed to generate approval tokens", err);
+    }
+
     dispatch({
       channel: host.email ? "email" : "sms",
       to: host.email || number,
@@ -174,7 +193,9 @@ export const notificationService = {
     whatsapp("faculty_visit_request", booking, {
       to: { countryCode: "+91", number },
       audience: "faculty",
-      reviewUrl: reviewUrlFor(booking),
+      reviewUrl,
+      acceptUrl,
+      rejectUrl,
       // The host may need to reach the visitor before deciding.
       visitorContact: booking.mobile,
     });

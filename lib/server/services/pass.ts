@@ -147,7 +147,9 @@ function describe(state: DeliveryState, live: boolean): string {
 export function deliveryReport(bookingId: string): DeliveryReport {
   const status = providerStatus();
   const messages = messagesForBooking(bookingId).filter(
-    (message) => message.messageType === "booking_created",
+    (message) =>
+      message.messageType === "booking_created" ||
+      message.messageType === "booking_approved",
   );
   const latest = messages[messages.length - 1];
 
@@ -192,8 +194,9 @@ export async function deliverPass(bookingId: string): Promise<DeliveryReport> {
   if (!booking) throw notFound("No booking found for that reference.");
 
   const settings = readSettings();
+  const messageType = booking.status === "Approved" ? "booking_approved" : "booking_created";
   await sendBookingMessage({
-    type: "booking_created",
+    type: messageType,
     booking,
     campusName: settings.campusName,
     passUrl: passUrlFor(booking),

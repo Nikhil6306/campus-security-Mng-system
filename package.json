@@ -8,12 +8,13 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test": "node tests/unit.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types tests/email-service.mjs && node tests/supabase-migration-safety.mjs",
+    "test": "node tests/unit.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types tests/email-service.mjs && node tests/supabase-migration-safety.mjs && node tests/gate-in-out-workflow.mjs",
     "test:e2e": "node tests/e2e-journey.mjs",
     "test:security": "node tests/security-audit.mjs",
-    "test:prebooking": "node --conditions=react-server tests/prebooking.mjs",
+    "test:prebooking": "node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types tests/prebooking.mjs",
     "test:photo": "node tests/visitor-photo.mjs",
-    "test:all": "node tests/unit.mjs && node --conditions=react-server tests/prebooking.mjs && node tests/visitor-photo.mjs && node tests/e2e-journey.mjs && node tests/security-audit.mjs"
+    "test:whatsapp": "node tests/whatsapp-faculty-approval.mjs",
+    "test:all": "node tests/unit.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types tests/prebooking.mjs && node tests/whatsapp-faculty-approval.mjs && node tests/gate-in-out-workflow.mjs"
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "^1.1.6",
@@ -52,11 +53,13 @@
   },
   "devDependencies": {
     "@types/node": "^22.13.5",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
     "autoprefixer": "^10.4.20",
     "eslint": "^9.21.0",
     "eslint-config-next": "^15.2.0",
+    "pg": "^8.23.1",
     "postcss": "^8.5.3",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.3"

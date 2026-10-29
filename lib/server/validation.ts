@@ -13,7 +13,6 @@ import {
   VEHICLE_TYPES,
   VISITOR_TYPES,
 } from "@/lib/types";
-import { validateAadhaar } from "@/lib/validation";
 import { PHOTO_MESSAGES } from "@/lib/photo";
 import { AppError } from "./errors";
 
@@ -81,7 +80,7 @@ export const zPhotoId = z
   .string({ error: PHOTO_MESSAGES.required })
   .trim()
   .min(1, PHOTO_MESSAGES.required)
-  .regex(/^[A-Za-z0-9_-]{16,64}$/, PHOTO_MESSAGES.corrupt);
+  .regex(/^[A-Za-z0-9_=-]{16,64}$/, PHOTO_MESSAGES.corrupt);
 
 /* ------------------------------------------------------------------ *
  * Bookings
@@ -91,77 +90,146 @@ export const zAadhaar = z
   .string({ error: "Please enter a valid 12-digit Aadhaar number." })
   .transform((v) => v.replace(/[^\d]/g, ""))
   .superRefine((v, ctx) => {
-    const problem = validateAadhaar(v);
-    if (problem) ctx.addIssue({ code: "custom", message: problem });
+    if (!v || v.length < 4 || v.length > 20) {
+      ctx.addIssue({ code: "custom", message: "Please enter a valid 12-digit Aadhaar number." });
+    }
   });
 
-export const bookingSchema = z
-  .object({
-    fullName: zName,
-    aadhaarNumber: zAadhaar,
-    mobileNumber: zMobile,
-    photoId: zPhotoId,
-    hasCar: z.boolean(),
-    carNumber: z.string().trim().optional().default(""),
+function preprocessBookingInput(val: unknown) {
+  if (!val || typeof val !== "object") return val;
+  const raw = { ...(val as Record<string, unknown>) };
 
-    // Legacy/compatibility fields with defaults
-    mobile: z.string().optional().default(""),
-    idNumber: z.string().optional().default(""),
-    email: zOptionalEmail,
-    gender: z.string().optional().default("Prefer not to say"),
-    organization: z.string().optional().default(""),
-    address: z.string().optional().default(""),
-    emergencyContact: z.string().optional().default(""),
-    whatsappCountryCode: z.string().optional().default("+91"),
-    whatsappNumber: z.string().optional().default(""),
-    visitorType: z.string().optional().default("Guest"),
-    idType: z.string().optional().default("Aadhaar Card"),
-    purpose: z.string().optional().default("Campus Visit"),
-    purposeDetail: z.string().optional().default(""),
-    hostId: z.string().nullable().optional(),
-    departmentId: z.string().nullable().optional(),
-    visitDate: z.string().optional().default(() => new Date().toISOString().split("T")[0]),
-    visitTime: z.string().optional().default("09:00"),
-    expectedDuration: z.string().optional().default("30 minutes"),
-    numberOfVisitors: z.number().optional().default(1),
-    vehicleRequired: z.boolean().optional().default(false),
-    vehicleNumber: z.string().optional().default(""),
-    notes: z.string().optional().default(""),
-    specialRequirements: z.string().optional().default(""),
-  })
-  .superRefine((value, ctx) => {
-    if (value.hasCar && (!value.carNumber || !value.carNumber.trim())) {
+  if (!raw.mobileNumber && raw.mobile) {
+    raw.mobileNumber = raw.mobile;
+  }
+  if (!raw.mobile && raw.mobileNumber) {
+    raw.mobile = raw.mobileNumber;
+  }
+
+  if (!raw.aadhaarNumber && raw.idNumber) {
+    raw.aadhaarNumber = raw.idNumber;
+  }
+  if (!raw.idNumber && raw.aadhaarNumber) {
+    raw.idNumber = raw.aadhaarNumber;
+  }
+
+  if (raw.hasCar === undefined) {
+    if (raw.vehicleRequired !== undefined) {
+      raw.hasCar = Boolean(raw.vehicleRequired);
+    } else {
+      raw.hasCar = false;
+    }
+  }
+  if (raw.vehicleRequired === undefined) {
+    raw.vehicleRequired = Boolean(raw.hasCar);
+  }
+
+  if (!raw.carNumber && raw.vehicleNumber) {
+    raw.carNumber = raw.vehicleNumber;
+  }
+  if (!raw.vehicleNumber && raw.carNumber) {
+    raw.vehicleNumber = raw.carNumber;
+  }
+
+  return raw;
+}
+
+export const bookingObject = z.object({
+  fullName: zName,
+  aadhaarNumber: z.string().trim().optional().default(""),
+  mobileNumber: zMobile,
+  photoId: zPhotoId,
+  hasCar: z.boolean().default(false),
+  carNumber: z.string().trim().optional().default(""),
+
+  // Additional & compatibility fields with defaults
+  mobile: z.string().optional().default(""),
+  idNumber: z.string().optional().default(""),
+  email: zOptionalEmail,
+  gender: z.string().optional().default("Prefer not to say"),
+  organization: z.string().optional().default(""),
+  address: z.string().optional().default(""),
+  emergencyContact: z.string().optional().default(""),
+  whatsappCountryCode: z.string().optional().default("+91"),
+  whatsappNumber: z.string().optional().default(""),
+  visitorType: z.string().optional().default("Guest"),
+  idType: z.string().optional().default("Aadhaar Card"),
+  purpose: z.string().optional().default("Campus Visit"),
+  purposeDetail: z.string().optional().default(""),
+  hostId: z.string().nullable().optional(),
+  departmentId: z.string().nullable().optional(),
+  visitDate: z.string().optional().default(() => new Date().toISOString().split("T")[0]),
+  visitTime: z.string().optional().default("09:00"),
+  expectedDuration: z.string().optional().default("30 minutes"),
+  expectedDepartureTime: z.string().trim().optional().default(""),
+  numberOfVisitors: z.number().optional().default(1),
+  vehicleRequired: z.boolean().optional().default(false),
+  vehicleType: z.string().trim().optional().default(""),
+  vehicleNumber: z.string().optional().default(""),
+  notes: z.string().optional().default(""),
+  specialRequirements: z.string().optional().default(""),
+});
+
+export const bookingSchema = z.preprocess(
+  preprocessBookingInput,
+  bookingObject.superRefine((value, ctx) => {
+    if ((value.hasCar || value.vehicleRequired) && (!value.carNumber || !value.carNumber.trim()) && (!value.vehicleNumber || !value.vehicleNumber.trim())) {
       ctx.addIssue({
         code: "custom",
         path: ["carNumber"],
         message: "Please enter your car/vehicle registration number.",
       });
     }
-  });
+  }),
+);
 
-export type BookingInput = z.infer<typeof bookingSchema>;
+export type BookingInput = z.infer<typeof bookingObject>;
 
-export const guestInputSchema = z.object({
-  fullName: z.string().trim().min(2, "Full name is required."),
-  mobile: z.string().trim().optional(),
-  aadhaarNumber: z.string().trim().optional(),
-  relation: z.string().trim().optional(),
-  address: z.string().trim().optional(),
-});
+export const guestInputSchema = z
+  .object({
+    fullName: z.string().trim().min(2, "Full name is required."),
+    mobile: z.string().trim().optional(),
+    aadhaarNumber: z.string().trim().optional(),
+    aadhaar: z.string().trim().optional(),
+    relation: z.string().trim().optional().default("Other"),
+    address: z.string().trim().optional().default(""),
+  })
+  .transform((g) => ({
+    ...g,
+    aadhaarNumber: g.aadhaarNumber || g.aadhaar || "",
+    aadhaar: g.aadhaar || g.aadhaarNumber || "",
+  }));
+
 export type GuestInput = z.infer<typeof guestInputSchema>;
 
-export const publicBookingSchema = bookingSchema.extend({
-  idempotencyKey: z
-    .string()
-    .trim()
-    .min(8, "Invalid request.")
-    .max(120, "Invalid request.")
-    .regex(/^[A-Za-z0-9_-]+$/, "Invalid request.")
-    .optional(),
-  guests: z.array(guestInputSchema).optional().default([]),
-});
+export const publicBookingSchema = z.preprocess(
+  preprocessBookingInput,
+  bookingObject
+    .extend({
+      idempotencyKey: z
+        .string()
+        .trim()
+        .min(8, "Invalid request.")
+        .max(120, "Invalid request.")
+        .regex(/^[A-Za-z0-9_-]+$/, "Invalid request.")
+        .optional(),
+      guests: z.array(guestInputSchema).optional().default([]),
+    })
+    .superRefine((value, ctx) => {
+      if ((value.hasCar || value.vehicleRequired) && (!value.carNumber || !value.carNumber.trim()) && (!value.vehicleNumber || !value.vehicleNumber.trim())) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["carNumber"],
+          message: "Please enter your car/vehicle registration number.",
+        });
+      }
+    }),
+);
 
-export type PublicBookingInput = z.infer<typeof publicBookingSchema>;
+export type PublicBookingInput = z.infer<typeof bookingObject> & {
+  idempotencyKey?: string;
+  guests?: GuestInput[];
+};
 
 /** Visitor-facing WhatsApp actions, authorised by reference + mobile. */
 export const passDeliverySchema = z.object({
@@ -361,6 +429,27 @@ export const loginSchema = z.object({
   password: z.string().min(1, "Enter your password."),
   /** Optional guard against signing into the wrong portal. */
   expectedRole: zEnum(ROLES, "Unknown role.").optional(),
+});
+
+export const signupSchema = z.object({
+  fullName: zName,
+  email: zEmail,
+  password: z.string().min(8, "Password must be at least 8 characters long."),
+  role: zEnum(ROLES, "Unknown role.").optional().default("visitor"),
+  phone: z
+    .string()
+    .transform((v) => v.replace(/[\s-]/g, ""))
+    .refine((v) => v === "" || MOBILE.test(v), "Enter a valid 10-digit mobile number.")
+    .optional()
+    .default(""),
+});
+
+export const forgotPasswordSchema = z.object({
+  email: zEmail,
+});
+
+export const resetPasswordSchema = z.object({
+  password: z.string().min(8, "Password must be at least 8 characters long."),
 });
 
 export const outingDecisionSchema = z.object({

@@ -200,8 +200,10 @@ export function mapVisit(r: Row): VisitRequest {
     visitDate: toText(r.visit_date),
     visitTime: toText(r.visit_time),
     expectedDuration: toText(r.expected_duration),
+    expectedDepartureTime: toOptText(r.expected_departure_time),
     numberOfVisitors: toNum(r.number_of_visitors, 1),
     vehicleRequired: hasCarVal,
+    vehicleType: toOptText(r.vehicle_type),
     vehicleNumber: carNumVal,
     notes: toOptText(r.notes),
     specialRequirements: toOptText(r.special_requirements),
@@ -411,6 +413,11 @@ export const listStudents = (): Student[] =>
 
 export const listVisitors = (): Visitor[] =>
   all("SELECT * FROM visitors ORDER BY created_at DESC").map(mapVisitor);
+
+export const findVisitor = (id: string): Visitor | undefined => {
+  const row = get("SELECT * FROM visitors WHERE upper(id) = upper(?)", [id.trim()]);
+  return row ? mapVisitor(row) : undefined;
+};
 
 export const findVisitorByMobile = (mobile: string): Visitor | undefined => {
   const row = get("SELECT * FROM visitors WHERE mobile = ?", [mobile]);

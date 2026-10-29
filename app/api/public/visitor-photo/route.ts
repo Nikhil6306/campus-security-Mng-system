@@ -60,19 +60,22 @@ export async function POST(request: Request) {
   }
 
   return publicRoute(async () => {
-    let file: File | null = null;
+    let file: File | Blob | null = null;
     try {
       const form = await request.formData();
       const candidate = form.get("photo");
-      if (candidate instanceof File) file = candidate;
-    } catch {
+      if (candidate instanceof File || (candidate && typeof candidate === "object" && "arrayBuffer" in candidate)) {
+        file = candidate as File | Blob;
+      }
+    } catch (err) {
+      console.warn("[visitor-photo] Error parsing multipart form data:", err);
       throw badRequest(PHOTO_MESSAGES.corrupt, { photoId: PHOTO_MESSAGES.corrupt });
     }
 
     if (!file) throw badRequest(PHOTO_MESSAGES.required, { photoId: PHOTO_MESSAGES.required });
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const stored = savePhoto(buffer, file.type);
+    const stored = savePhoto(buffer, (file as File).type);
 
     // Only the id travels back. The storage path stays server-side, and the
     // photograph itself is readable only through the staff route.

@@ -59,7 +59,7 @@ const escapeHtml = (value: unknown) =>
  * can keep or open offline. The QR is lifted straight from the rendered SVG,
  * so the downloaded copy carries the same code as the screen.
  */
-function buildPassDocument(record: PublicBookingView, qrMarkup: string): string {
+function buildPassDocument(record: PublicBookingView, qrMarkup: string, isValid: boolean): string {
   const row = (label: string, value: unknown) =>
     `<div class="field"><span class="label">${escapeHtml(label)}</span><span class="value">${escapeHtml(value)}</span></div>`;
 
@@ -121,7 +121,7 @@ function buildPassDocument(record: PublicBookingView, qrMarkup: string): string 
         </div>
       </div>
       <div class="qr">
-        ${qrMarkup}
+        ${isValid ? qrMarkup : `<div style="border: 2px dashed #d5dce6; border-radius: 8px; padding: 20px 8px; color: #5b6880; font-size: 11px; text-align: center; background: #f7fafc;"><strong>PASS NOT ISSUED</strong><br/><span style="font-size: 10px; margin-top: 4px; display: inline-block;">Status: ${escapeHtml(record.status)}</span></div>`}
         <p>${escapeHtml(record.id)}</p>
       </div>
     </div>
@@ -252,21 +252,21 @@ export function VisitorPassView({ bookingId }: { bookingId: string }) {
 
   /* ------------------------------- The pass ------------------------------- */
 
+  const valid = ["Approved", "Checked In", "Meeting In Progress", "Checked Out"].includes(
+    record.status,
+  );
+
   const handleDownload = () => {
     const qrMarkup = document.getElementById("visitor-pass-qr")?.innerHTML ?? "";
     downloadFile(
       `visitor-pass-${record.id}.html`,
-      buildPassDocument(record, qrMarkup),
+      buildPassDocument(record, qrMarkup, valid),
       "text/html;charset=utf-8",
     );
     toast.success("Visitor pass downloaded.", {
       description: "Open the saved file to view or print your pass.",
     });
   };
-
-  const valid = ["Approved", "Checked In", "Meeting In Progress", "Checked Out"].includes(
-    record.status,
-  );
 
   return (
     <div className="mx-auto max-w-lg space-y-5">
@@ -335,15 +335,29 @@ export function VisitorPassView({ bookingId }: { bookingId: string }) {
             </div>
           </div>
 
-          <div id="visitor-pass-qr" className="flex flex-col items-center gap-3 sm:w-[150px]">
-            <PassQR
-              value={buildPassPayload(record.id, record.passToken)}
-              size={124}
-              label={record.id}
-            />
-            <p className="text-center text-[10px] leading-snug text-muted-foreground">
-              Present this code at the gate. Verification is performed against the booking record.
-            </p>
+          <div id="visitor-pass-qr" className="flex flex-col items-center justify-center sm:w-[150px]">
+            {valid ? (
+              <>
+                <PassQR
+                  value={buildPassPayload(record.id, record.passToken)}
+                  size={124}
+                  label={record.id}
+                />
+                <p className="text-center text-[10px] leading-snug text-muted-foreground mt-2">
+                  Present this code at the gate. Verification is performed against the booking record.
+                </p>
+              </>
+            ) : (
+              <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-amber-300 bg-amber-50/70 p-4 text-center dark:border-amber-800 dark:bg-amber-950/20 w-full min-h-[140px]">
+                <AlertTriangle className="h-6 w-6 text-amber-600 dark:text-amber-400 mb-2" />
+                <p className="text-[11px] font-semibold text-foreground uppercase tracking-wider">
+                  Pass Not Issued
+                </p>
+                <p className="mt-1 text-[10px] text-muted-foreground leading-tight">
+                  Status: <strong className="capitalize text-foreground">{record.status}</strong>. Entry passes are issued only when approved.
+                </p>
+              </div>
+            )}
           </div>
         </div>
 
