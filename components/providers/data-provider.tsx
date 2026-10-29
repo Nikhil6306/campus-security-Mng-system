@@ -61,6 +61,9 @@ interface AppContextValue {
   live: boolean;
   refresh: () => Promise<void>;
   signIn: (email: string, password: string, expectedRole?: Role) => Promise<AuthSession>;
+  signUp: (payload: { email: string; password: string; fullName: string; role?: Role; phone?: string }) => Promise<AuthSession | null>;
+  forgotPassword: (email: string) => Promise<{ ok: boolean; message: string }>;
+  resetPassword: (password: string, token?: string) => Promise<{ ok: boolean; message: string }>;
   signOut: () => Promise<void>;
   /** Runs a mutation, surfaces a friendly error and keeps the snapshot in step. */
   run: <T>(operation: () => Promise<T>) => Promise<T>;
@@ -159,6 +162,26 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     [refresh],
   );
 
+  const signUp = React.useCallback(
+    async (payload: { email: string; password: string; fullName: string; role?: Role; phone?: string }) => {
+      const next = await api.signUp(payload);
+      if (next) {
+        setSession(next);
+        await refresh();
+      }
+      return next;
+    },
+    [refresh],
+  );
+
+  const forgotPassword = React.useCallback(async (email: string) => {
+    return api.forgotPassword(email);
+  }, []);
+
+  const resetPassword = React.useCallback(async (password: string, token?: string) => {
+    return api.resetPassword(password, token);
+  }, []);
+
   const signOut = React.useCallback(async () => {
     try {
       await api.signOut();
@@ -182,8 +205,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   );
 
   const value = React.useMemo<AppContextValue>(
-    () => ({ ready, db, session, live, refresh, signIn, signOut, run }),
-    [ready, db, session, live, refresh, signIn, signOut, run],
+    () => ({ ready, db, session, live, refresh, signIn, signUp, forgotPassword, resetPassword, signOut, run }),
+    [ready, db, session, live, refresh, signIn, signUp, forgotPassword, resetPassword, signOut, run],
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

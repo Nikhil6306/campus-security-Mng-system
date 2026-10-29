@@ -57,6 +57,9 @@ export interface TemplateContext {
   checkInAt?: string;
   checkOutAt?: string;
   rejectionReason?: string;
+  /** Signed action URLs for interactive decision links. */
+  acceptUrl?: string;
+  rejectUrl?: string;
   /**
    * Absolute URL of the faculty review screen. Carries the booking reference
    * only — the page itself requires an authenticated faculty session, and the
@@ -105,42 +108,32 @@ const signature = (ctx: TemplateContext): string =>
 const builders: Record<WhatsAppMessageType, (ctx: TemplateContext) => string> = {
   /**
    * Sent to the faculty member a visitor asked to meet.
-   *
-   * The only message that carries the visitor's contact number, because the
-   * host may need to reach them before deciding. It carries no ID number, no
-   * address and no Aadhaar fragment.
+   * Includes secure single-use Accept and Reject action links.
    */
   faculty_visit_request: (ctx) =>
     [
-      `Hello ${ctx.booking.hostName},`,
+      `*Campus Security — New Visitor Request*`,
       "",
-      "You have a new campus visit request awaiting your decision.",
+      `Dear ${ctx.booking.hostName || "Faculty Member"},`,
       "",
-      `${ctx.campusName}`,
-      "Campus Security Management System",
-      "",
-      RULE,
-      "",
-      "VISIT REQUEST",
-      "",
-      detailBlock(ctx),
-      ctx.visitorContact ? `\n\nVisitor contact:\n${ctx.visitorContact}` : "",
+      `A visitor has requested to meet you at ${ctx.campusName}.`,
       "",
       RULE,
+      `*Visitor:* ${ctx.booking.fullName}`,
+      `*Purpose:* ${ctx.booking.purpose}`,
+      `*Request Reference:* ${ctx.booking.id}`,
+      `*Visit Date/Time:* ${formatDateLong(ctx.booking.visitDate)} at ${formatTime(ctx.booking.visitTime)}`,
+      `*Number of Visitors:* ${ctx.booking.numberOfVisitors || 1}`,
+      ctx.visitorContact ? `*Visitor Contact:* ${ctx.visitorContact}` : "",
+      RULE,
       "",
-      "Please review and approve or decline this request.",
-      // The photograph is named, never attached and never linked: the image
-      // lives in private storage and is readable only inside the review screen,
-      // behind the host's own session. Putting a storage URL in a WhatsApp
-      // message would make a visitor's face forwardable to anyone.
-      ctx.booking.photoUrl
-        ? "The visitor's photo is attached to the request and is visible on the review screen."
-        : "",
+      "Please review this request and select Accept or Reject:",
       "",
-      ctx.reviewUrl ? `Review request:
-${ctx.reviewUrl}` : "",
+      ctx.acceptUrl ? `✅ *Accept Visit:*\n${ctx.acceptUrl}` : "",
+      ctx.rejectUrl ? `❌ *Reject Visit:*\n${ctx.rejectUrl}` : "",
+      ctx.reviewUrl ? `🔗 *Staff Portal Review:*\n${ctx.reviewUrl}` : "",
       "",
-      "The visitor is told only once you have decided.",
+      "This request will remain pending until your decision is verified.",
       "",
       signature(ctx),
     ]
@@ -166,67 +159,58 @@ ${ctx.reviewUrl}` : "",
       "",
       RULE,
       "",
-      "Your booking is currently awaiting approval.",
+      "Your booking is currently awaiting faculty approval.",
       "You will receive another WhatsApp notification once your booking is approved.",
       "",
-      `Visitor Pass:\n${ctx.passUrl}`,
+      `Track your request status:\n${ctx.passUrl}`,
       "",
-      "Please keep your Booking ID available when arriving at the campus.",
+      "Please keep your Booking ID available.",
       "",
       signature(ctx),
     ].join("\n"),
 
   booking_approved: (ctx) =>
     [
+      `*Campus Security — Visit Approved*`,
+      "",
       `Hello ${ctx.booking.fullName},`,
       "",
-      "Your campus visit has been APPROVED.",
-      "",
-      `${ctx.campusName}`,
+      `Your request to meet ${ctx.booking.hostName || "campus staff"} has been approved.`,
       "",
       RULE,
-      "",
-      "VISITOR PASS",
-      "",
-      detailBlock(ctx),
-      "",
-      "Status:\nAPPROVED",
-      "",
+      `*Request Reference:* ${ctx.booking.id}`,
+      `*Visit Status:* APPROVED`,
+      `*Date & Time:* ${formatDateLong(ctx.booking.visitDate)} at ${formatTime(ctx.booking.visitTime)}`,
       RULE,
       "",
-      "Your digital visitor pass is ready.",
+      "Please present your digital visitor pass at the campus entrance and complete the required identity verification.",
       "",
-      `Open Visitor Pass:\n${ctx.passUrl}`,
+      `📲 *Open Digital Visitor Pass:*`,
+      `${ctx.passUrl}`,
       "",
-      "Your QR code will be verified by the security guard at the campus entry gate.",
-      "Please carry a valid ID document as required by campus security.",
+      "Please note that the pass is subject to its validity period and campus security verification.",
       "",
       signature(ctx),
     ].join("\n"),
 
   booking_rejected: (ctx) =>
     [
+      `*Campus Security — Request Update*`,
+      "",
       `Hello ${ctx.booking.fullName},`,
       "",
-      "We are unable to confirm your campus visit request.",
+      `We are sorry, but your request to meet ${ctx.booking.hostName || "campus staff"} could not be approved.`,
       "",
+      `Request Reference: ${ctx.booking.id}`,
+      "",
+      "Thank you for your understanding.",
+      "",
+      "If your visit is still necessary, please contact the faculty member or the campus administration through the appropriate official channel.",
+      "",
+      "Regards,",
+      "Campus Security Team",
       `${ctx.campusName}`,
-      "",
-      RULE,
-      "",
-      detailBlock(ctx),
-      "",
-      "Status:\nNOT APPROVED",
-      ctx.rejectionReason ? `\nReason:\n${ctx.rejectionReason}` : "",
-      "",
-      RULE,
-      "",
-      "You may submit a fresh booking for another date or time.",
-      "",
-      signature(ctx),
-    ]
-      .filter((line) => line !== "")
-      .join("\n"),
+    ].join("\n"),
 
   booking_rescheduled: (ctx) =>
     [

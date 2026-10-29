@@ -318,6 +318,8 @@ export interface Teacher {
   room: string;
   availabilityStatus: AvailabilityStatus;
   active: boolean;
+  /** Linked Supabase/auth user account ID where applicable. */
+  userId?: string | null;
   createdAt: string;
   updatedAt: string;
   /** Derived convenience flag: bookable right now. */
@@ -450,8 +452,10 @@ export interface VisitRequest {
   departmentId?: string | null;
   department?: string;
   expectedDuration?: ExpectedDuration | string;
+  expectedDepartureTime?: string;
   numberOfVisitors?: number;
   vehicleRequired?: boolean;
+  vehicleType?: string;
   vehicleNumber?: string;
   notes?: string;
   specialRequirements?: string;
@@ -714,7 +718,10 @@ export type NotificationType =
   | "emergency"
   | "vehicle"
   | "meeting"
+  | "gate"
   | "system";
+
+export type CheckpointResult = "Pass" | "Fail" | "N/A";
 
 export interface AppNotification {
   id: string;
@@ -746,9 +753,9 @@ export interface ActivityLog {
  * Identity
  * ------------------------------------------------------------------ */
 
-export type Role = "super_admin" | "admin" | "security" | "teacher" | "student";
+export type Role = "super_admin" | "admin" | "security" | "teacher" | "student" | "visitor";
 
-export const ROLES: Role[] = ["super_admin", "admin", "security", "teacher", "student"];
+export const ROLES: Role[] = ["super_admin", "admin", "security", "teacher", "student", "visitor"];
 
 export const ROLE_LABELS: Record<Role, string> = {
   super_admin: "Super Administrator",
@@ -756,6 +763,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   security: "Security Guard",
   teacher: "Teacher / Staff",
   student: "Student",
+  visitor: "Visitor",
 };
 
 /** Landing route after sign-in, per role. */
@@ -765,6 +773,7 @@ export const ROLE_HOME: Record<Role, string> = {
   security: "/security/dashboard",
   teacher: "/teacher/dashboard",
   student: "/student",
+  visitor: "/visitor",
 };
 
 export function isAdminRole(role: Role | undefined | null): boolean {
@@ -839,4 +848,513 @@ export interface AppDatabase {
   settings: AppSettings;
   /** Server clock at snapshot time. */
   syncedAt: string;
+}
+
+/* ------------------------------------------------------------------ *
+ * Guard Duty & Shift Handover
+ * ------------------------------------------------------------------ */
+
+export type GuardShiftType = "Morning" | "Evening" | "Night" | "Custom";
+export type ShiftType = GuardShiftType;
+
+export type GuardAssignmentStatus = "Scheduled" | "Active" | "Completed" | "Cancelled" | "Reassigned";
+export type AssignmentStatus = GuardAssignmentStatus;
+
+export type GuardSessionStatus = "Active" | "Handover Pending" | "Completed" | "Exception";
+
+export type HandoverStatus =
+  | "Draft"
+  | "Submitted"
+  | "Awaiting Incoming Guard"
+  | "Acknowledged"
+  | "Pending Supervisor Review"
+  | "Approved"
+  | "Rejected"
+  | "Exception"
+  | "Escalated";
+
+export interface GateStaffingRequirement {
+  id: string;
+  gate: string;
+  shiftType: GuardShiftType;
+  minGuards: number;
+  idealGuards: number;
+  requiredGuards?: number;
+  updatedAt: string;
+}
+
+export interface GuardShiftAssignment {
+  id: string; // ASN-2026-0001
+  guardId: string;
+  guardName: string;
+  gate: string;
+  dutyDate: string; // YYYY-MM-DD
+  shiftType: GuardShiftType;
+  startTime: string; // HH:mm
+  endTime: string; // HH:mm
+  scheduledStartTime?: string;
+  scheduledEndTime?: string;
+  isOvernight: boolean;
+  supervisorId?: string | null;
+  supervisorName: string;
+  status: GuardAssignmentStatus;
+  reassignReason?: string | null;
+  reassignedFromId?: string | null;
+  notes?: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GuardShiftSession {
+  id: string; // SES-2026-0001
+  assignmentId: string;
+  guardId: string;
+  guardName: string;
+  gate: string;
+  actualStart: string; // ISO
+  actualEnd?: string | null;
+  checkinStatus: "On-Time" | "Late" | "Early";
+  lateMinutes: number;
+  lateReason?: string | null;
+  notes?: string | null;
+  status: GuardSessionStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PatrolRoute {
+  id: string; // ROU-001
+  name: string;
+  zone: string;
+  zones?: string[];
+  applicableGates: string[];
+  frequencyHours: number;
+  frequency?: number | string;
+  description?: string;
+  active: boolean;
+  createdAt: string;
+}
+
+export interface PatrolCheckpoint {
+  id: string; // CHK-PT-001
+  routeId: string;
+  title: string;
+  name?: string;
+  location: string;
+  instructions: string;
+  requiredItems: string[];
+  inspectionItems?: string[];
+  orderIndex: number;
+  photoRequired: boolean;
+  active: boolean;
+}
+
+export interface PatrolSubmission {
+  id: string; // PAT-2026-0001
+  sessionId: string;
+  checkpointId: string;
+  checkpointTitle?: string;
+  checkpointLocation?: string;
+  checkpointName?: string;
+  routeName?: string;
+  location?: string;
+  guardId: string;
+  guardName: string;
+  status: "Pass" | "Fail" | "N/A";
+  result?: "Pass" | "Fail" | "N/A" | string;
+  observations: string;
+  photoUrl?: string | null;
+  itemsChecked: Record<string, "Pass" | "Fail" | "N/A">;
+  escalated: boolean;
+  escalationNotes?: string | null;
+  submittedAt: string;
+}
+
+export interface EquipmentHandoverItem {
+  name: string;
+  status: "Working" | "Faulty" | "Missing" | "N/A";
+  quantity: number;
+  notes?: string;
+}
+
+export interface ShiftHandover {
+  id: string; // HND-2026-0001
+  sessionId: string;
+  outgoingGuardId: string;
+  outgoingGuardName: string;
+  incomingGuardId?: string | null;
+  incomingGuardName: string;
+  gate: string;
+  dutyDate: string;
+  shiftType: GuardShiftType;
+  status: HandoverStatus;
+  equipmentDetails: EquipmentHandoverItem[];
+  equipmentNotes?: string;
+  generalNotes: string;
+  outgoingNotes?: string;
+  urgentIssues: string;
+  pendingVisitorsCount: number;
+  openIncidentsCount: number;
+  unresolvedIncidentsCount?: number;
+  checkInTime?: string;
+  checkOutTime?: string;
+  patrolCompletedCount: number;
+  patrolTotalCount: number;
+  patrolCheckpointsCount?: number;
+  discrepancies?: string;
+  submittedAt?: string | null;
+  incomingAcknowledgedAt?: string | null;
+  incomingNotes?: string | null;
+  disputedItems?: string | null;
+  supervisorId?: string | null;
+  supervisorName?: string | null;
+  supervisorDecision?: "Approved" | "Rejected" | "Escalated" | null;
+  supervisorNotes?: string | null;
+  rejectionReason?: string | null;
+  decidedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ShiftHandoverItem {
+  id: string;
+  handoverId: string;
+  category: "Visitor" | "Incident" | "Equipment" | "Patrol";
+  referenceId: string;
+  title: string;
+  severityOrStatus: string;
+  status?: string;
+  itemType?: string;
+  details?: string;
+  notes: string;
+  acknowledgedByIncoming: boolean;
+  createdAt: string;
+}
+
+export interface GuardDutyDashboardStats {
+  totalGuards: number;
+  guardsOnDuty: number;
+  guardsNotCheckedIn: number;
+  activeGateAssignments: number;
+  pendingShiftHandovers: number;
+  unresolvedIncidentsRequiringHandover: number;
+  pendingPatrolCheckpoints: number;
+  handoversAwaitingApproval: number;
+  lateCheckIns?: number;
+}
+
+/* ------------------------------------------------------------------ *
+ * Emergency SOS — Enhanced Lifecycle
+ * ------------------------------------------------------------------ */
+
+export type SOSCategory =
+  | "Medical Emergency"
+  | "Fire or Smoke"
+  | "Security Threat"
+  | "Suspicious Activity"
+  | "Accident or Injury"
+  | "Other Emergency";
+
+export const SOS_CATEGORIES: SOSCategory[] = [
+  "Medical Emergency",
+  "Fire or Smoke",
+  "Security Threat",
+  "Suspicious Activity",
+  "Accident or Injury",
+  "Other Emergency",
+];
+
+export type SOSStatus =
+  | "REPORTED"
+  | "ACKNOWLEDGED"
+  | "ASSIGNED"
+  | "RESPONDING"
+  | "ON_SCENE"
+  | "RESOLVED"
+  | "CLOSED"
+  | "CANCELLED"
+  | "ESCALATED";
+
+export const SOS_STATUSES: SOSStatus[] = [
+  "REPORTED",
+  "ACKNOWLEDGED",
+  "ASSIGNED",
+  "RESPONDING",
+  "ON_SCENE",
+  "RESOLVED",
+  "CLOSED",
+  "CANCELLED",
+  "ESCALATED",
+];
+
+/** Status transitions permitted per role. */
+export const SOS_TRANSITIONS: Record<string, SOSStatus[]> = {
+  admin: ["ACKNOWLEDGED", "ASSIGNED", "RESOLVED", "CLOSED", "CANCELLED", "ESCALATED"],
+  super_admin: ["ACKNOWLEDGED", "ASSIGNED", "RESOLVED", "CLOSED", "CANCELLED", "ESCALATED"],
+  security: ["ACKNOWLEDGED", "RESPONDING", "ON_SCENE", "RESOLVED"],
+};
+
+export interface EmergencyIncident {
+  id: string;
+  reporterId?: string | null;
+  reporterName: string;
+  reporterRole: string;
+  reporterContact: string;
+  category: SOSCategory;
+  severity: IncidentSeverity;
+  title: string;
+  description: string;
+  campus: string;
+  building: string;
+  area: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  evidenceUrl?: string | null;
+  status: SOSStatus;
+  assignedGuardId?: string | null;
+  assignedGuardName?: string | null;
+  assignedAt?: string | null;
+  reportedAt: string;
+  acknowledgedAt?: string | null;
+  dispatchedAt?: string | null;
+  respondingAt?: string | null;
+  onSceneAt?: string | null;
+  resolvedAt?: string | null;
+  closedAt?: string | null;
+  resolutionSummary?: string | null;
+  resolvedBy?: string | null;
+  ackDeadlineAt?: string | null;
+  escalated: boolean;
+  escalationNote?: string | null;
+  idempotencyKey?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface IncidentAssignment {
+  id: string;
+  incidentId: string;
+  guardId: string;
+  guardName: string;
+  assignedBy: string;
+  assignedAt: string;
+  reason?: string | null;
+  active: boolean;
+}
+
+export type IncidentEventType =
+  | "CREATED"
+  | "STATUS_CHANGED"
+  | "ASSIGNED"
+  | "REASSIGNED"
+  | "NOTE_ADDED"
+  | "EVIDENCE_UPLOADED"
+  | "BACKUP_REQUESTED"
+  | "ESCALATED"
+  | "CLOSED";
+
+export interface IncidentEvent {
+  id: string;
+  incidentId: string;
+  actorId?: string | null;
+  actorName: string;
+  actorRole: string;
+  eventType: IncidentEventType;
+  oldStatus?: string | null;
+  newStatus?: string | null;
+  note?: string | null;
+  at: string;
+}
+
+/* ------------------------------------------------------------------ *
+ * Safety Issues & Maintenance
+ * ------------------------------------------------------------------ */
+
+export type SafetyIssueCategory =
+  | "Broken Gate/Door Lock"
+  | "Damaged CCTV"
+  | "Faulty Security Light"
+  | "Blocked Fire Exit"
+  | "Missing/Damaged Fire Extinguisher"
+  | "Unsafe Electrical Condition"
+  | "Damaged Boundary/Access Barrier"
+  | "Other Campus Safety Issue";
+
+export const SAFETY_CATEGORIES: SafetyIssueCategory[] = [
+  "Broken Gate/Door Lock",
+  "Damaged CCTV",
+  "Faulty Security Light",
+  "Blocked Fire Exit",
+  "Missing/Damaged Fire Extinguisher",
+  "Unsafe Electrical Condition",
+  "Damaged Boundary/Access Barrier",
+  "Other Campus Safety Issue",
+];
+
+export type SafetyIssueStatus =
+  | "REPORTED"
+  | "TRIAGED"
+  | "ASSIGNED"
+  | "IN_PROGRESS"
+  | "FIXED"
+  | "VERIFIED"
+  | "CLOSED"
+  | "REOPENED"
+  | "ESCALATED";
+
+export type SafetyUrgency = "Routine" | "Normal" | "Urgent" | "Immediate";
+
+export interface SafetyIssue {
+  id: string;
+  category: SafetyIssueCategory;
+  title: string;
+  description: string;
+  campus: string;
+  building: string;
+  area: string;
+  severity: IncidentSeverity;
+  urgency: SafetyUrgency;
+  reporterId?: string | null;
+  reporterName: string;
+  reporterRole: string;
+  evidenceUrl?: string | null;
+  assignedToId?: string | null;
+  assignedToName?: string | null;
+  assignedAt?: string | null;
+  deadlineAt?: string | null;
+  status: SafetyIssueStatus;
+  verifiedBy?: string | null;
+  verifiedAt?: string | null;
+  fixNotes?: string | null;
+  evidenceFixUrl?: string | null;
+  closedAt?: string | null;
+  closureNote?: string | null;
+  parentIssueId?: string | null;
+  reopenCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type MaintenanceEventType =
+  | "CREATED"
+  | "TRIAGED"
+  | "ASSIGNED"
+  | "STARTED"
+  | "NOTE_ADDED"
+  | "EVIDENCE_UPLOADED"
+  | "MARKED_FIXED"
+  | "VERIFIED"
+  | "CLOSED"
+  | "REOPENED"
+  | "ESCALATED";
+
+export interface MaintenanceEvent {
+  id: string;
+  issueId: string;
+  actorId?: string | null;
+  actorName: string;
+  actorRole: string;
+  eventType: MaintenanceEventType;
+  oldStatus?: string | null;
+  newStatus?: string | null;
+  note?: string | null;
+  at: string;
+}
+
+/* ------------------------------------------------------------------ *
+ * Student Hostels, Outpass & Digital Passes
+ * ------------------------------------------------------------------ */
+
+export interface Hostel {
+  id: string;
+  name: string;
+  kind: "Hostel" | "Block" | "Wing";
+  gender: "Male" | "Female" | "Mixed";
+  capacity?: number | null;
+  wardenId?: string | null;
+  wardenName: string;
+  active: boolean;
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface HostelMembership {
+  id: string;
+  studentId: string;
+  hostelId: string;
+  hostelName?: string;
+  roomNumber: string;
+  approverId?: string | null;
+  approverName: string;
+  active: boolean;
+  assignedAt: string;
+  assignedBy: string;
+  notes?: string | null;
+}
+
+export type OutpassStatus = "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED" | "EXPIRED";
+
+export interface OutpassRequest {
+  id: string;
+  studentId: string;
+  studentName: string;
+  studentRoll: string;
+  hostelId?: string | null;
+  hostelName: string;
+  purpose: string;
+  destination: string;
+  emergencyContact: string;
+  departureAt: string;
+  expectedReturnAt?: string | null;
+  notes?: string | null;
+  approverId?: string | null;
+  approverName: string;
+  status: OutpassStatus;
+  decidedAt?: string | null;
+  decidedBy?: string | null;
+  rejectionReason?: string | null;
+  extendedReturnAt?: string | null;
+  extensionNote?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type StudentPassState = "ACTIVE" | "EXITED" | "RETURNED" | "EXPIRED" | "CANCELLED";
+
+export interface StudentPass {
+  id: string;
+  outpassId: string;
+  studentId: string;
+  studentName: string;
+  /** Opaque token for QR display — only the hash is stored in DB */
+  passToken?: string;
+  validFrom: string;
+  validUntil: string;
+  state: StudentPassState;
+  issuedBy: string;
+  issuedAt: string;
+  cancelledBy?: string | null;
+  cancelledAt?: string | null;
+  cancellationNote?: string | null;
+  lateReturn: boolean;
+  lateAlertSent: boolean;
+}
+
+export interface StudentGateEvent {
+  id: string;
+  passId: string;
+  outpassId: string;
+  studentId: string;
+  studentName: string;
+  direction: "EXIT" | "ENTRY";
+  gate: string;
+  scannedBy?: string | null;
+  scannedByName: string;
+  note?: string | null;
+  isOverride: boolean;
+  overrideBy?: string | null;
+  overrideNote?: string | null;
+  at: string;
 }

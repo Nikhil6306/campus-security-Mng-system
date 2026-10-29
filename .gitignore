@@ -18,6 +18,10 @@ tsconfig.tsbuildinfo
 
 # Local development database — created and seeded on first run.
 .data
+/campus_security.db
+
+# Local Supabase CLI state
+supabase/.temp/
 
 # Coverage reports
 coverage/

@@ -70,33 +70,33 @@ export async function PATCH(request: Request, { params }: Params) {
     switch (action) {
       case "approve":
         if (!admin && !isHost) throw forbidden("Only the host or an administrator may approve a visit.");
-        return approveBooking(id, session);
+        return await approveBooking(id, session);
       case "reject": {
         if (!admin && !isHost) throw forbidden("Only the host or an administrator may reject a visit.");
         const { reason } = parse(rejectSchema, body);
-        return rejectBooking(id, reason, session);
+        return await rejectBooking(id, reason, session);
       }
       case "reschedule": {
         if (!admin && !isHost) throw forbidden("Only the host or an administrator may move a visit.");
         const { visitDate, visitTime } = parse(rescheduleSchema, body);
-        return rescheduleBooking(id, visitDate, visitTime, session);
+        return await rescheduleBooking(id, visitDate, visitTime, session);
       }
       case "cancel":
         if (!ADMIN_ROLES.includes(session.role)) {
           throw forbidden("Only an administrator may cancel a booking.");
         }
-        return cancelBooking(id, session, typeof body.reason === "string" ? body.reason : undefined);
+        return await cancelBooking(id, session, typeof body.reason === "string" ? body.reason : undefined);
       case "no-show":
         if (!admin && session.role !== "security") {
           throw forbidden("Only security or an administrator may record a no-show.");
         }
-        return markNoShow(id, session);
+        return await markNoShow(id, session);
       case "start-meeting":
         if (!admin && !isHost) throw forbidden("Only the host or an administrator may start a meeting.");
-        return startMeeting(id, session);
+        return await startMeeting(id, session);
       case "complete-meeting":
         if (!admin && !isHost) throw forbidden("Only the host or an administrator may complete a meeting.");
-        return completeMeeting(id, session);
+        return await completeMeeting(id, session);
     }
   });
 }

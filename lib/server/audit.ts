@@ -2,6 +2,7 @@ import "server-only";
 
 import type { AppNotification, AuthSession, NotificationType, Role } from "@/lib/types";
 import { nextId, run } from "./db";
+import { persistSecondaryToSupabase } from "./supabase-db";
 
 /**
  * Audit trail and notifications.
@@ -36,12 +37,14 @@ export function audit(actor: Actor, input: AuditInput): void {
   const who = actor
     ? { id: actor.userId, name: actor.name, role: actor.role as Role | "system" }
     : SYSTEM;
+  const id = nextId("ACT", { pad: 6 });
+  const at = new Date().toISOString();
   run(
     `INSERT INTO activity_logs
        (id, actor_id, actor_name, actor_role, action, entity, entity_id, summary, channel, at)
      VALUES (?,?,?,?,?,?,?,?,?,?)`,
     [
-      nextId("ACT", { pad: 6 }),
+      id,
       who.id,
       who.name,
       who.role,
@@ -50,9 +53,21 @@ export function audit(actor: Actor, input: AuditInput): void {
       input.entityId,
       input.summary,
       input.channel ?? "web",
-      new Date().toISOString(),
+      at,
     ],
   );
+  persistSecondaryToSupabase("activity_logs", {
+    id,
+    actor_id: who.id,
+    actor_name: who.name,
+    actor_role: who.role,
+    action: input.action,
+    entity: input.entity,
+    entity_id: input.entityId,
+    summary: input.summary,
+    channel: input.channel ?? "web",
+    at,
+  });
 }
 
 export interface NotifyInput {
@@ -72,6 +87,16 @@ export function notify(input: NotifyInput): AppNotification {
     "INSERT INTO notifications(id, type, title, message, href, audience, read, at) VALUES (?,?,?,?,?,?,0,?)",
     [id, input.type, input.title, input.message, input.href ?? null, input.audience ?? null, at],
   );
+  persistSecondaryToSupabase("notifications", {
+    id,
+    type: input.type,
+    title: input.title,
+    message: input.message,
+    href: input.href ?? null,
+    audience: input.audience ?? null,
+    read: false,
+    at,
+  });
   return {
     id,
     type: input.type,

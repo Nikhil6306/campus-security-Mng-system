@@ -23,7 +23,7 @@ export async function POST() {
       summary: `${session.name} signed out.`,
     });
   }
-  if (token) signOutToken(token);
+  if (token) await signOutToken(token);
 
   store.set(SESSION_COOKIE, "", { httpOnly: true, path: "/", maxAge: 0 });
   return NextResponse.json({ ok: true, data: null });

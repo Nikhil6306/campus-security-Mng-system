@@ -6,6 +6,7 @@ import type { Row } from "../../db";
 import { publish } from "../../events";
 import { notFound } from "../../errors";
 import { findVisit, readSettings, mapVisit } from "../../repo";
+import { persistSecondaryToSupabase } from "../../supabase-db";
 import { getProvider, providerStatus, type ProviderStatus } from "./provider";
 import {
   WHATSAPP_MESSAGE_LABELS,
@@ -176,6 +177,8 @@ export interface SendOptions {
   checkOutAt?: string;
   rejectionReason?: string;
   reviewUrl?: string;
+  acceptUrl?: string;
+  rejectUrl?: string;
   visitorContact?: string;
   /**
    * Overrides the recipient.
@@ -210,7 +213,11 @@ export async function sendBookingMessage(
 
   const recipient = options.to ?? {
     countryCode: booking.whatsappCountryCode ?? "+91",
-    number: booking.whatsappNumber ?? "",
+    number:
+      (booking.whatsappNumber && booking.whatsappNumber.trim()) ||
+      booking.mobileNumber ||
+      booking.mobile ||
+      "",
   };
   const to = normaliseWhatsApp(recipient.countryCode, recipient.number);
   if (!to) {
@@ -250,6 +257,8 @@ export async function sendBookingMessage(
     checkOutAt: options.checkOutAt,
     rejectionReason: options.rejectionReason,
     reviewUrl: options.reviewUrl,
+    acceptUrl: options.acceptUrl,
+    rejectUrl: options.rejectUrl,
     visitorContact: options.visitorContact,
   };
   const body = renderTemplate(type, context);
@@ -278,6 +287,21 @@ export async function sendBookingMessage(
         timestamp,
       ],
     );
+
+    persistSecondaryToSupabase("whatsapp_messages", {
+      id,
+      booking_id: booking.id,
+      visitor_id: booking.visitorId ?? null,
+      phone_number: to,
+      message_type: type,
+      dedupe_key: dedupeKey,
+      body,
+      provider: provider.name,
+      status: "QUEUED",
+      attempts: 0,
+      created_at: timestamp,
+      updated_at: timestamp,
+    });
   } catch {
     // Unique violation on dedupe_key — a concurrent request got there first.
     return { sent: true, simulated: provider.name === "mock", reason: "Already queued." };
@@ -312,6 +336,17 @@ async function deliver(
         WHERE id = ?`,
       ["SENT", result.providerMessageId ?? null, timestamp, provider.name, timestamp, id],
     );
+
+    persistSecondaryToSupabase("whatsapp_messages", {
+      id,
+      status: "SENT",
+      provider_message_id: result.providerMessageId ?? null,
+      sent_at: timestamp,
+      error_message: null,
+      provider: provider.name,
+      updated_at: timestamp,
+    }, "update");
+
     publish("whatsapp", "sent", id);
     return {
       sent: true,
@@ -326,6 +361,15 @@ async function deliver(
       WHERE id = ?`,
     ["FAILED", result.error ?? "The message could not be sent.", provider.name, timestamp, id],
   );
+
+  persistSecondaryToSupabase("whatsapp_messages", {
+    id,
+    status: "FAILED",
+    error_message: result.error ?? "The message could not be sent.",
+    provider: provider.name,
+    updated_at: timestamp,
+  }, "update");
+
   publish("whatsapp", "failed", id);
   return { sent: false, simulated: !result.real, reason: result.error };
 }

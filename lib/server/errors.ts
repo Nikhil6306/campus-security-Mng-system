@@ -39,32 +39,88 @@ export const forbidden = (message = "Your role does not have access to this acti
  * because two requests raced past the application-level check.
  */
 export function translateDbError(error: unknown): AppError | null {
-  const message = error instanceof Error ? error.message : String(error);
-  if (!/UNIQUE constraint failed|constraint failed/i.test(message)) return null;
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "object" && error !== null && "message" in error
+        ? String((error as { message: unknown }).message)
+        : String(error);
+  const code =
+    typeof error === "object" && error !== null && "code" in error
+      ? String((error as { code: unknown }).code)
+      : "";
 
-  if (message.includes("uniq_host_slot")) {
-    return conflict("That time slot has just been taken. Please choose another one.");
+  if (
+    code === "23505" ||
+    /UNIQUE constraint failed|constraint failed|duplicate key value/i.test(message)
+  ) {
+    if (
+      message.includes("uniq_host_slot") ||
+      message.includes("visit_requests_host_id_visit_date_visit_time_key")
+    ) {
+      return conflict("That time slot has just been taken. Please choose another one.");
+    }
+    if (
+      message.includes("uniq_visitor_slot") ||
+      message.includes("visit_requests_visitor_id_visit_date_visit_time_key")
+    ) {
+      return conflict("A booking already exists for this visitor and time.");
+    }
+    if (message.includes("uniq_check_direction")) {
+      return conflict("This booking has already been stamped at the gate.");
+    }
+    if (message.includes("uniq_vehicle_inside")) {
+      return conflict("That vehicle is already recorded as inside the campus.");
+    }
+    if (message.includes("visitors.mobile") || message.includes("visitors_mobile_key")) {
+      return conflict("A visitor with that mobile number already exists.");
+    }
+    if (message.includes("app_users.email") || message.includes("profiles_email_key")) {
+      return conflict("An account with that email already exists.");
+    }
+    if (message.includes("employee_id")) {
+      return conflict("That employee ID is already in use.");
+    }
+    if (message.includes("departments.name") || message.includes("departments_name_key")) {
+      return conflict("A department with that name already exists.");
+    }
+    return conflict("That change conflicts with an existing record.");
   }
-  if (message.includes("uniq_visitor_slot")) {
-    return conflict("A booking already exists for this visitor and time.");
+
+  return null;
+}
+
+export function toApiError(error: unknown): import("next/server").NextResponse {
+  const { NextResponse } = require("next/server");
+  if (error instanceof AppError) {
+    return NextResponse.json(
+      { ok: false, error: { message: error.message, code: error.code, details: error.details } },
+      { status: error.status },
+    );
   }
-  if (message.includes("uniq_check_direction")) {
-    return conflict("This booking has already been stamped at the gate.");
+  if (error && typeof error === "object" && "status" in error && "name" in error && (error as any).name === "AuthError") {
+    const status = (error as any).status || 401;
+    return NextResponse.json(
+      { ok: false, error: { message: (error as any).message, code: status === 403 ? "forbidden" : "unauthorized" } },
+      { status },
+    );
   }
-  if (message.includes("uniq_vehicle_inside")) {
-    return conflict("That vehicle is already recorded as inside the campus.");
+  const translated = translateDbError(error);
+  if (translated) {
+    return NextResponse.json(
+      { ok: false, error: { message: translated.message, code: translated.code } },
+      { status: translated.status },
+    );
   }
-  if (message.includes("visitors.mobile")) {
-    return conflict("A visitor with that mobile number already exists.");
+  if (error && typeof error === "object" && "issues" in error) {
+    return NextResponse.json(
+      { ok: false, error: { message: "Validation failed", code: "validation_error", details: error } },
+      { status: 400 },
+    );
   }
-  if (message.includes("app_users.email")) {
-    return conflict("An account with that email already exists.");
-  }
-  if (message.includes("employee_id")) {
-    return conflict("That employee ID is already in use.");
-  }
-  if (message.includes("departments.name")) {
-    return conflict("A department with that name already exists.");
-  }
-  return conflict("That change conflicts with an existing record.");
+  console.error("[api] unhandled error", error);
+  return NextResponse.json(
+    { ok: false, error: { message: "Something went wrong on our side. Please try again.", code: "internal_error" } },
+    { status: 500 },
+  );
 }

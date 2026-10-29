@@ -137,13 +137,18 @@ export function LoginForm({ expectedRole }: { expectedRole?: Role } = {}) {
         </FormField>
 
         <div className="flex items-center justify-between pt-1">
-          <button
-            type="button"
-            onClick={() => toast.info("Please contact the University IT / Security Administrator to reset your password.")}
+          <Link
+            href="/forgot-password"
             className="text-xs text-primary font-medium hover:underline focus:outline-none"
           >
             Forgot Password?
-          </button>
+          </Link>
+          <Link
+            href="/signup"
+            className="text-xs text-muted-foreground hover:text-foreground hover:underline"
+          >
+            Create account
+          </Link>
         </div>
 
         <div className="flex flex-col gap-2 pt-2">

@@ -15,6 +15,7 @@ export async function POST(request: Request) {
   return mutationRoute(GATE_ROLES, async (session) => {
     const input = parse(bookingSchema, await readBody(request));
     const source = session.role === "security" ? "Security Desk" : "Walk-in";
-    return createBooking(input, session, source).booking;
+    const res = await createBooking(input, session, source);
+    return res.booking;
   });
 }

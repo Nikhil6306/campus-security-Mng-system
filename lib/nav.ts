@@ -1,6 +1,7 @@
 import {
   AlertTriangle,
   BadgeCheck,
+  BarChart3,
   BookMarked,
   Bell,
   Building2,
@@ -36,6 +37,12 @@ export const adminNav: NavGroup[] = [
   {
     label: "Overview",
     items: [{ href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard }],
+  },
+  {
+    label: "Guard Duty & Shift Handover",
+    items: [
+      { href: "/admin/guard-duty", label: "Guard Duty & Handover", icon: ShieldCheck },
+    ],
   },
   {
     label: "Visitor Operations",
@@ -94,6 +101,7 @@ export const adminNav: NavGroup[] = [
         badgeKey: "unreadNotifications",
       },
       { href: "/admin/activity", label: "Activity & Audit", icon: History },
+      { href: "/admin/analytics", label: "Visitor Analytics", icon: BarChart3 },
       { href: "/admin/reports", label: "Reports", icon: FileBarChart },
       { href: "/admin/settings", label: "Settings", icon: Settings },
     ],

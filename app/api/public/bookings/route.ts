@@ -50,7 +50,7 @@ export async function POST(request: Request) {
       publicBookingSchema,
       await readBody(request),
     );
-    const { booking, replayed } = createBooking(input, null, "Visitor Portal", {
+    const { booking, replayed } = await createBooking(input, null, "Visitor Portal", {
       guests,
       idempotencyKey,
     });

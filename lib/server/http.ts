@@ -8,6 +8,7 @@ import { getDb, hasSeededThisProcess, markSeeded } from "./db";
 import { AppError, translateDbError } from "./errors";
 import { seedIfEmpty } from "./seed";
 import { buildSnapshot } from "./services/snapshot";
+import { syncFromSupabase } from "./supabase-db";
 
 /**
  * Route plumbing.
@@ -32,6 +33,7 @@ export function bootstrap(): void {
   if (!hasSeededThisProcess()) {
     seedIfEmpty();
     markSeeded();
+    void syncFromSupabase(true).catch((err: unknown) => console.warn("[http] Supabase sync deferred:", err));
   }
 }
 

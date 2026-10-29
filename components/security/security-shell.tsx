@@ -5,12 +5,16 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   AlertTriangle,
+  BadgeCheck,
+  CalendarDays,
   Car,
   LayoutGrid,
   LogIn,
   LogOut,
   ScanLine,
   ShieldAlert,
+  ShieldCheck,
+  User,
   Users,
 } from "lucide-react";
 
@@ -26,6 +30,10 @@ import { cn } from "@/lib/utils";
 
 const tabs = [
   { href: "/security/dashboard", label: "Console", icon: LayoutGrid },
+  { href: "/security/handover", label: "Duty & Handover", icon: ShieldCheck },
+  { href: "/security/patrol", label: "Patrols", icon: BadgeCheck },
+  { href: "/security/profile", label: "My Profile", icon: User },
+  { href: "/security/schedule", label: "Schedule", icon: CalendarDays },
   { href: "/security/scan", label: "Scan", icon: ScanLine },
   { href: "/security/check-in", label: "Check-In", icon: LogIn },
   { href: "/security/check-out", label: "Check-Out", icon: LogOut },

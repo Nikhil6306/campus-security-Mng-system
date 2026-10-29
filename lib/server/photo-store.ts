@@ -13,6 +13,7 @@ import {
   photoStoragePath,
   type AllowedPhotoType,
 } from "@/lib/photo";
+import { isSupabaseConfigured, getSupabaseAdminClient } from "@/lib/supabase";
 import { badRequest } from "./errors";
 
 /**
@@ -108,10 +109,12 @@ export function savePhoto(buffer: Buffer, declaredType?: string): StoredPhoto {
 
   // A header that disagrees with the content is a signal worth refusing, but
   // only when the browser actually claimed one of the image types.
+  const cleanDeclared = declaredType?.split(";")[0]?.trim().toLowerCase();
+  const normalizedDeclared = cleanDeclared === "image/jpg" ? "image/jpeg" : cleanDeclared;
   if (
-    declaredType &&
-    (ALLOWED_PHOTO_TYPES as readonly string[]).includes(declaredType) &&
-    declaredType !== contentType
+    normalizedDeclared &&
+    (ALLOWED_PHOTO_TYPES as readonly string[]).includes(normalizedDeclared) &&
+    normalizedDeclared !== contentType
   ) {
     throw badRequest(PHOTO_MESSAGES.corrupt, { photoId: PHOTO_MESSAGES.corrupt });
   }
@@ -127,6 +130,22 @@ export function savePhoto(buffer: Buffer, declaredType?: string): StoredPhoto {
   // 0o600: readable by the service account only. Nothing else on the host has
   // any business opening a visitor's photograph.
   writeFileSync(absolute, buffer, { mode: 0o600 });
+
+  // If Supabase is configured, also persist to Supabase Storage private bucket
+  if (isSupabaseConfigured()) {
+    const admin = getSupabaseAdminClient();
+    // Support both 'visitor-photos' bucket and 'campus-security/visitor-photos'
+    void admin.storage
+      .from("visitor-photos")
+      .upload(`${id}.${extension}`, buffer, { contentType, upsert: true })
+      .catch(() => {
+        // Fallback to campus-security bucket if visitor-photos bucket does not exist
+        return admin.storage
+          .from("campus-security")
+          .upload(`visitor-photos/${id}.${extension}`, buffer, { contentType, upsert: true });
+      })
+      .catch((err: unknown) => console.warn("[photo-store] Supabase storage upload failed:", err));
+  }
 
   return { id, path, contentType, bytes: buffer.length };
 }

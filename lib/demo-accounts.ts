@@ -55,6 +55,13 @@ export const DEMO_ACCOUNTS: DemoAccount[] = [
     name: "Aarav Mehta",
     description: "Own hostel record and outing requests.",
   },
+  {
+    role: "visitor",
+    label: "Visitor",
+    email: "visitor@dsvv.edu.in",
+    name: "Rahul Sharma",
+    description: "Visitor portal — booking tracking and pass lookup.",
+  },
 ];
 
 export function demoAccountFor(role: Role): DemoAccount | undefined {

@@ -3,6 +3,45 @@
  * through these so the messages stay consistent.
  */
 
+const CAMPUS_TZ = "Asia/Kolkata" as const;
+
+function nowInCampusTz(): { date: string; hours: number; minutes: number } {
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: CAMPUS_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  const parts = Object.fromEntries(
+    fmt.formatToParts(new Date()).map((p) => [p.type, p.value]),
+  ) as Record<string, string>;
+  const date = `${parts.year}-${parts.month}-${parts.day}`;
+  const hours = Number(parts.hour) % 24;
+  const minutes = Number(parts.minute);
+  return { date, hours, minutes };
+}
+
+export function todayInCampusTz(offsetDays = 0): string {
+  if (offsetDays === 0) return nowInCampusTz().date;
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + offsetDays);
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: CAMPUS_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  return fmt.format(d);
+}
+
+export function campusMinutesNow(): number {
+  const { hours, minutes } = nowInCampusTz();
+  return hours * 60 + minutes;
+}
+
 export type FieldErrors<T extends string = string> = Partial<Record<T, string>>;
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/;
@@ -41,22 +80,18 @@ export function validateEmail(value: string, optional = false): string | undefin
 
 export function validateVehicleNumber(value: string, optional = false): string | undefined {
   const v = value.trim().toUpperCase();
-  if (!v) return optional ? undefined : "Vehicle number is required.";
+  if (!v) return optional ? undefined : "Vehicle registration number is required.";
   if (!VEHICLE_RE.test(v)) return "Use a valid format, e.g. UK07AB1234.";
   return undefined;
 }
 
-/** Rejects empty and past dates (today is allowed). */
+/** Rejects empty and past dates using Asia/Kolkata timezone (today is allowed). */
 export function validateFutureDate(value: string, label = "Date"): string | undefined {
   if (!value) return `${label} is required.`;
-  const d = new Date(`${value}T00:00:00`);
-  if (Number.isNaN(d.getTime())) return "Enter a valid date.";
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  if (d < today) return `${label} cannot be in the past.`;
-  const max = new Date();
-  max.setDate(max.getDate() + 90);
-  if (d > max) return `${label} cannot be more than 90 days ahead.`;
+  const today = todayInCampusTz();
+  if (value < today) return `${label} cannot be in the past.`;
+  const max = todayInCampusTz(90);
+  if (value > max) return `${label} cannot be more than 90 days ahead.`;
   return undefined;
 }
 
@@ -73,6 +108,64 @@ export function validateTime(value: string, label = "Time"): string | undefined 
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) return "Enter a valid time.";
   const [h] = value.split(":").map(Number);
   if (h < 7 || h >= 20) return "Visiting hours are 07:00 – 20:00.";
+  return undefined;
+}
+
+/** Validates visit date against Asia/Kolkata campus timezone. */
+export function validateVisitDate(value: string, label = "Visit date"): string | undefined {
+  if (!value) return `${label} is required.`;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return "Enter a valid date.";
+  const today = todayInCampusTz();
+  if (value < today) return `${label} cannot be in the past.`;
+  const max = todayInCampusTz(90);
+  if (value > max) return `${label} cannot be more than 90 days ahead.`;
+  return undefined;
+}
+
+/** Validates arrival time against visiting hours and Asia/Kolkata current clock. */
+export function validateVisitTime(
+  date: string,
+  time: string,
+  from = "09:00",
+  to = "17:00",
+): string | undefined {
+  if (!time) return "Expected arrival time is required.";
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return "Enter a valid time (HH:mm).";
+  const [h, m] = time.split(":").map(Number);
+  const minutes = h * 60 + m;
+  const [fromH, fromM] = from.split(":").map(Number);
+  const [toH, toM] = to.split(":").map(Number);
+  const fromMinutes = fromH * 60 + fromM;
+  const toMinutes = toH * 60 + toM;
+
+  if (minutes < fromMinutes || minutes >= toMinutes) {
+    return `Visiting hours are ${from} to ${to}.`;
+  }
+  const today = todayInCampusTz();
+  if (date === today) {
+    const nowMins = campusMinutesNow();
+    if (minutes <= nowMins) {
+      return "That time has already passed today.";
+    }
+  }
+  return undefined;
+}
+
+/** Validates optional expected departure time. If provided, must be after arrival time. */
+export function validateDepartureTime(
+  arrivalTime: string,
+  departureTime: string,
+): string | undefined {
+  if (!departureTime) return undefined;
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(departureTime)) return "Enter a valid time (HH:mm).";
+  if (!arrivalTime) return undefined;
+  const [arrH, arrM] = arrivalTime.split(":").map(Number);
+  const [depH, depM] = departureTime.split(":").map(Number);
+  const arrMinutes = arrH * 60 + arrM;
+  const depMinutes = depH * 60 + depM;
+  if (depMinutes <= arrMinutes) {
+    return "Expected departure time must be after expected arrival time.";
+  }
   return undefined;
 }
 
