@@ -1,4 +1,5 @@
 import "server-only";
+import { NextResponse } from "next/server";
 
 /**
  * Errors that are safe to show a user.
@@ -90,18 +91,18 @@ export function translateDbError(error: unknown): AppError | null {
   return null;
 }
 
-export function toApiError(error: unknown): import("next/server").NextResponse {
-  const { NextResponse } = require("next/server");
+export function toApiError(error: unknown): NextResponse {
   if (error instanceof AppError) {
     return NextResponse.json(
       { ok: false, error: { message: error.message, code: error.code, details: error.details } },
       { status: error.status },
     );
   }
-  if (error && typeof error === "object" && "status" in error && "name" in error && (error as any).name === "AuthError") {
-    const status = (error as any).status || 401;
+  if (error && typeof error === "object" && "status" in error && "name" in error && (error as { name?: string }).name === "AuthError") {
+    const authErr = error as { status?: number; message?: string };
+    const status = authErr.status || 401;
     return NextResponse.json(
-      { ok: false, error: { message: (error as any).message, code: status === 403 ? "forbidden" : "unauthorized" } },
+      { ok: false, error: { message: authErr.message, code: status === 403 ? "forbidden" : "unauthorized" } },
       { status },
     );
   }

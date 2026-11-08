@@ -115,27 +115,27 @@ export default function DashboardScreen() {
   const stats = [
     {
       label: 'Visitors today',
-      value: String(dashData?.liveSummary.visitorsToday ?? 0),
+      value: String(dashData?.liveSummary?.visitorsToday ?? 0),
       icon: UsersRound,
       color: colors.blue,
     },
     {
       label: 'On campus now',
-      value: String(dashData?.liveSummary.visitorsInside ?? 0),
+      value: String(dashData?.liveSummary?.visitorsInside ?? 0),
       icon: DoorOpen,
       color: colors.green,
     },
     {
       label: 'Vehicles inside',
-      value: String(dashData?.liveSummary.vehiclesInside ?? 0),
+      value: String(dashData?.liveSummary?.vehiclesInside ?? 0),
       icon: UserRoundPlus,
       color: colors.blue,
     },
     {
       label: 'Active alerts',
-      value: String(dashData?.liveSummary.openIncidents ?? 0),
+      value: String(dashData?.liveSummary?.openIncidents ?? 0),
       icon: Siren,
-      color: (dashData?.liveSummary.openIncidents ?? 0) > 0 ? colors.red : colors.muted,
+      color: (dashData?.liveSummary?.openIncidents ?? 0) > 0 ? colors.red : colors.muted,
     },
   ];
 
