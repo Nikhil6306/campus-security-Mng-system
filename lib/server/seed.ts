@@ -135,6 +135,7 @@ const TEACHERS = [
   ["TCH-016", "EMP-1016", "Prof. Emeritus K. S. Tyagi", "ks.tyagi@dsvv.ac.in", "9810012316", "DEPT-022", "Professor Emeritus", "Admin Block · 203", "Available"],
   ["TCH-017", "EMP-1017", "Prof. Emeritus Karan Singh", "karan.singh@dsvv.ac.in", "9810012317", "DEPT-022", "Professor Emeritus", "Admin Block · 204", "Available"],
   ["TCH-018", "EMP-1018", "Ms. Kaveri Bali", "kaveri.bali@dsvv.ac.in", "9810012318", "DEPT-023", "Admissions Officer", "Admissions Block · 001", "Available"],
+  ["TCH-019", "EMP-1019", "Dr. Anupama Sharma", "anupama.sharma@dsvv.edu.in", "9810012319", "DEPT-001", "Associate Professor", "Yoga Block · 103", "Available"],
 ] as const;
 
 const GUARDS = [
@@ -331,6 +332,7 @@ export function seed(): void {
     seedEmergencies();
     seedNotifications();
     seedActivity();
+    seedGuardDuty();
 
     run("INSERT INTO app_settings(id, data, updated_at) VALUES (1, ?, ?)", [
       JSON.stringify(DEFAULT_SETTINGS),
@@ -340,6 +342,155 @@ export function seed(): void {
     seedAccounts();
     seedCounters();
   });
+}
+
+function seedGuardDuty(): void {
+  const stamp = at(-10, 8);
+
+  // Staffing requirements
+  const staffing = [
+    ["Main Gate", "Morning", 2],
+    ["Main Gate", "Evening", 2],
+    ["Main Gate", "Night", 1],
+    ["Service Gate", "Morning", 1],
+    ["Service Gate", "Evening", 1],
+    ["Service Gate", "Night", 1],
+    ["Hostel Gate", "Morning", 1],
+    ["Hostel Gate", "Evening", 1],
+    ["Hostel Gate", "Night", 1],
+    ["Sports Gate", "Morning", 1],
+    ["Sports Gate", "Evening", 1],
+    ["Sports Gate", "Night", 0],
+  ] as const;
+
+  for (const [gate, shift, required] of staffing) {
+    run(
+      `INSERT INTO gate_staffing_requirements(gate, shift_type, required_guards, notes, updated_at)
+       VALUES (?,?,?, 'Standard security baseline', ?)
+       ON CONFLICT(gate, shift_type) DO UPDATE SET required_guards = excluded.required_guards`,
+      [gate, shift, required, stamp],
+    );
+  }
+
+  // Patrol Routes
+  const routes = [
+    [
+      "RTE-001",
+      "Perimeter & Gate Security Route",
+      "Perimeter boundary, gate posts, vehicle gates, and parking areas",
+      JSON.stringify(["Main Gate", "Service Gate", "Sports Gate", "Parking Area"]),
+      "Every 2 hours",
+      1,
+    ],
+    [
+      "RTE-002",
+      "Academic & Administration Route",
+      "Admin building, server corridor, central library, and auditorium",
+      JSON.stringify(["Admin Block", "Central Library", "Science Block", "Auditorium"]),
+      "Every 3 hours",
+      1,
+    ],
+    [
+      "RTE-003",
+      "Hostel & Residential Zone Route",
+      "Student residential halls, emergency exits, and health bay",
+      JSON.stringify(["Ganga Hostel", "Yamuna Hostel", "Saraswati Hostel", "Health Centre"]),
+      "Every 2 hours",
+      1,
+    ],
+  ] as const;
+
+  for (const [id, name, desc, zones, freq, active] of routes) {
+    run(
+      `INSERT INTO patrol_routes(id, name, description, zones, frequency, active, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?)
+       ON CONFLICT(id) DO UPDATE SET name = excluded.name, description = excluded.description`,
+      [id, name, desc, zones, freq, active, stamp, stamp],
+    );
+  }
+
+  // Checkpoints
+  const checkpoints = [
+    [
+      "CKPT-001",
+      "RTE-001",
+      "Main Gate Access Control & Barrier",
+      "Main Gate",
+      "Verify visitor logs, check boom barrier mechanism, test emergency telephone, verify guard presence.",
+      JSON.stringify(["Visitor log accurate", "Barrier operational", "CCTV camera online", "Emergency phone working"]),
+      0,
+      1,
+    ],
+    [
+      "CKPT-002",
+      "RTE-001",
+      "Service Gate & Vehicle Bay Inspection",
+      "Service Gate",
+      "Inspect delivery lock, check fire extinguishers, inspect exterior lighting and fence integrity.",
+      JSON.stringify(["Delivery bay secured", "Fire extinguisher in green zone", "Lighting intact", "No fence compromise"]),
+      0,
+      2,
+    ],
+    [
+      "CKPT-003",
+      "RTE-001",
+      "North Boundary Fence & Sports Complex Gate",
+      "Sports Gate",
+      "Walk the fence line from Sports Gate to northern corner. Ensure boundary lighting is active and no breaches exist.",
+      JSON.stringify(["Perimeter fence intact", "Boundary lights functional", "No unauthorized vehicle/entry signs"]),
+      1,
+      3,
+    ],
+    [
+      "CKPT-004",
+      "RTE-002",
+      "Admin Block Lobby & Server Room Corridor",
+      "Admin Block",
+      "Inspect biometric access door on server room, check fire alarm repeater panel, confirm ground floor locked.",
+      JSON.stringify(["Server door locked", "Fire panel normal", "Ground floor secured"]),
+      0,
+      1,
+    ],
+    [
+      "CKPT-005",
+      "RTE-002",
+      "Central Library Emergency Exits & Perimeter",
+      "Central Library",
+      "Verify emergency exits are unblocked and panic bars operate freely. Check window locks.",
+      JSON.stringify(["Emergency doors unobstructed", "Ground floor windows secured", "No after-hours occupancy"]),
+      0,
+      2,
+    ],
+    [
+      "CKPT-006",
+      "RTE-003",
+      "Hostels Common Gate & Curfew Check",
+      "Yamuna Hostel",
+      "Ensure gate register is signed, check entry gates, inspect exterior stairwells and lighting.",
+      JSON.stringify(["Curfew register in order", "Stairwell unobstructed", "Emergency push-bars functional"]),
+      0,
+      1,
+    ],
+    [
+      "CKPT-007",
+      "RTE-003",
+      "Health Centre Driveway & Ambulance Bay",
+      "Health Centre",
+      "Confirm ambulance driveway is 100% clear with zero parking violations.",
+      JSON.stringify(["Driveway clear of all obstructions", "First aid facility lights active"]),
+      0,
+      2,
+    ],
+  ] as const;
+
+  for (const [id, routeId, name, loc, inst, items, photoReq, sort] of checkpoints) {
+    run(
+      `INSERT INTO patrol_checkpoints(id, route_id, name, location, instructions, inspection_items, photo_required, sort_order, active, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,1,?,?)
+       ON CONFLICT(id) DO UPDATE SET name = excluded.name, instructions = excluded.instructions`,
+      [id, routeId, name, loc, inst, items, photoReq, sort, stamp, stamp],
+    );
+  }
 }
 
 function seedBookings(): void {
@@ -567,28 +718,30 @@ function seedActivity(): void {
  * hashed with scrypt before insert. Do not enable demo accounts in production.
  */
 export const DEMO_ACCOUNTS = [
-  { id: "USR-001", email: "superadmin@dsvv.edu.in", name: "Campus Security Director", role: "super_admin", refId: null, gate: null },
-  { id: "USR-002", email: "admin@dsvv.edu.in", name: "Security Administrator", role: "admin", refId: null, gate: null },
-  { id: "USR-003", email: "security@dsvv.edu.in", name: "Amit Kumar", role: "security", refId: "GRD-001", gate: "Main Gate" },
-  { id: "USR-004", email: "sunil.thapa@dsvv.edu.in", name: "Sunil Thapa", role: "security", refId: "GRD-002", gate: "Main Gate" },
-  { id: "USR-005", email: "pooja.rawat@dsvv.edu.in", name: "Pooja Rawat", role: "security", refId: "GRD-004", gate: "Hostel Gate" },
+  { id: "USR-001", email: "superadmin@dsvv.edu.in", name: "Campus Security Director", role: "super_admin", refId: null, gate: null, defaultPassword: "Super@123" },
+  { id: "USR-002", email: "admin@dsvv.edu.in", name: "Security Administrator", role: "admin", refId: null, gate: null, defaultPassword: "Admin@123" },
+  { id: "USR-003", email: "security@dsvv.edu.in", name: "Amit Kumar", role: "security", refId: "GRD-001", gate: "Main Gate", defaultPassword: "Security@123" },
+  { id: "USR-004", email: "sunil.thapa@dsvv.edu.in", name: "Sunil Thapa", role: "security", refId: "GRD-002", gate: "Main Gate", defaultPassword: "Security@123" },
+  { id: "USR-005", email: "pooja.rawat@dsvv.edu.in", name: "Pooja Rawat", role: "security", refId: "GRD-004", gate: "Hostel Gate", defaultPassword: "Security@123" },
   // TCH-008 = Dr. Rajeshwari Trivedi · HoD, Department of Education
-  { id: "USR-006", email: "rajeshwari.trivedi@dsvv.ac.in", name: "Dr. Rajeshwari Trivedi", role: "teacher", refId: "TCH-008", gate: null },
+  { id: "USR-006", email: "rajeshwari.trivedi@dsvv.ac.in", name: "Dr. Rajeshwari Trivedi", role: "teacher", refId: "TCH-008", gate: null, defaultPassword: "Teacher@123" },
   // TCH-001 = Dr. Narendra Pratap Singh · HoD, Yogic Science
-  { id: "USR-007", email: "np.singh@dsvv.ac.in", name: "Dr. Narendra Pratap Singh", role: "teacher", refId: "TCH-001", gate: null },
-  { id: "USR-008", email: "aarav.mehta@dsvv.edu.in", name: "Aarav Mehta", role: "student", refId: "STU-2026-001", gate: null },
+  { id: "USR-007", email: "np.singh@dsvv.ac.in", name: "Dr. Narendra Pratap Singh", role: "teacher", refId: "TCH-001", gate: null, defaultPassword: "Teacher@123" },
+  { id: "USR-008", email: "aarav.mehta@dsvv.edu.in", name: "Aarav Mehta", role: "student", refId: "STU-2026-001", gate: null, defaultPassword: "Student@123" },
+  { id: "USR-009", email: "anupama.sharma@dsvv.edu.in", name: "Dr. Anupama Sharma", role: "teacher", refId: "TCH-008", gate: null, defaultPassword: "Teacher@123" },
+  { id: "USR-010", email: "nikhilshukla1200@gmail.com", name: "Nikhil Shukla", role: "super_admin", refId: null, gate: null, defaultPassword: "Admin@123" },
 ] as const;
 
 function seedAccounts(): void {
-  const password = process.env.DEMO_ACCOUNT_PASSWORD;
-  if (!password) return;
-
+  const globalPassword = process.env.DEMO_ACCOUNT_PASSWORD;
   const stamp = at(-30, 9);
   for (const account of DEMO_ACCOUNTS) {
-    const { hash, salt } = hashPassword(password);
+    const passwordToUse = globalPassword || account.defaultPassword;
+    const { hash, salt } = hashPassword(passwordToUse);
     run(
       `INSERT INTO app_users(id, email, password_hash, password_salt, name, role, ref_id, gate, active, created_at, updated_at)
-       VALUES (?,?,?,?,?,?,?,?,1,?,?)`,
+       VALUES (?,?,?,?,?,?,?,?,1,?,?)
+       ON CONFLICT(id) DO UPDATE SET email = excluded.email, password_hash = excluded.password_hash, password_salt = excluded.password_salt, active = 1`,
       [account.id, account.email, hash, salt, account.name, account.role, account.refId, account.gate, stamp, stamp],
     );
   }
@@ -611,6 +764,12 @@ function seedCounters(): void {
     ["ACT", 10],
     ["OUT", 0],
     ["B", 226],
+    ["ASG", 10],
+    ["SESS", 10],
+    ["HND", 10],
+    ["RTE", 10],
+    ["CHKPT", 20],
+    ["SUB", 20],
   ];
   for (const [key, value] of counters) {
     run("INSERT INTO counters(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", [
@@ -626,6 +785,14 @@ export function resetToSeed(): void {
   db.exec("PRAGMA foreign_keys = OFF");
   tx(() => {
     for (const table of [
+      "patrol_submissions",
+      "shift_handover_items",
+      "shift_handovers",
+      "guard_shift_sessions",
+      "guard_shift_assignments",
+      "patrol_checkpoints",
+      "patrol_routes",
+      "gate_staffing_requirements",
       "sessions",
       "check_logs",
       "movements",

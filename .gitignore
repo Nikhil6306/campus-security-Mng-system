@@ -30,6 +30,7 @@ coverage/
 # IDE / Editor directories
 .idea/
 .vscode/
+.claude/
 *.swp
 *.swo
 *.suo
