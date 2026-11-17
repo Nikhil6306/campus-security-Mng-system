@@ -25,3 +25,4 @@ The following external account credentials should be configured by the system ad
    - Provide `RESEND_API_KEY` in Vercel environment variables to send visitor booking confirmations and QR passes via email.
 3. **EAS Cloud Build Account:**
    - Execute `eas build --profile production --platform android` in the `mobile/` directory to produce the cloud-signed production APK.
+

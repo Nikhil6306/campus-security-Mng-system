@@ -64,3 +64,4 @@
 - [x] Set production API URL: `https://campus-security-management.vercel.app`.
 - [x] Package identifier: `com.dsvv.campussecurity`.
 - [x] Camera, Internet, and Network State Android permissions configured in `app.json`.
+

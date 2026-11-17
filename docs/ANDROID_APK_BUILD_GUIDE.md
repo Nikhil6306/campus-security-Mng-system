@@ -64,3 +64,4 @@ The resulting release APK will be located at:
 7. Sign in using security credentials:
    - Email: `security@dsvv.edu.in`
    - Password: `Security@123`
+

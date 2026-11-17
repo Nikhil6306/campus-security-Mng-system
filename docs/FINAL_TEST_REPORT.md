@@ -52,3 +52,4 @@
 - **Aadhaar Protection:** AES-256-GCM authenticated encryption verified. Envelope contains 12-byte IV, 16-byte auth tag, and ciphertext. No plaintext stored in database.
 - **Pass Token Protection:** Gate QR payload contains opaque URL-safe tokens hashed with SHA-256. Plaintext tokens are single-use or scoped strictly to visitor pass lifecycle.
 - **Role Isolation:** HTTP handlers enforce `requireRole` middleware across `super_admin`, `admin`, `security`, `teacher`, `student`. Unauthorized attempts return HTTP 403 Forbidden.
+

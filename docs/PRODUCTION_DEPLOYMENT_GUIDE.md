@@ -55,3 +55,4 @@ curl -I https://campus-security-management.vercel.app/
 curl -s https://campus-security-management.vercel.app/api/auth/session
 ```
 Expected output: HTTP 200 OK with `{ "ok": true, "data": { "session": null } }`.
+
