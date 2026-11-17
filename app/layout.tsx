@@ -1,21 +1,12 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
 
 import { AppProviders } from "@/components/providers";
 
 import "./globals.css";
 
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-sans",
-  display: "swap",
-});
-
-const mono = JetBrains_Mono({
-  subsets: ["latin"],
-  variable: "--font-mono",
-  display: "swap",
-});
+// Resilient font definitions: relies on standard system fallbacks without network failure during build
+const inter = { variable: "font-sans" };
+const mono = { variable: "font-mono" };
 
 /**
  * Site-wide metadata for the public visitor portal.
