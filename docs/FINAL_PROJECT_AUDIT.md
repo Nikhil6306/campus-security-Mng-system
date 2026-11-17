@@ -63,3 +63,4 @@ A comprehensive architectural and functional audit of the Campus Security Manage
   - Connected `notifications.tsx` to live campus snapshot with real-time updates and unread tracking.
   - Removed demo test buttons and hardcoded shortcuts from `scan.tsx`.
   - Cleared pre-filled credentials from `login.tsx`.
+
