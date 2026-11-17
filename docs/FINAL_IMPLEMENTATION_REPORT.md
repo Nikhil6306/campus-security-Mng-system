@@ -100,3 +100,4 @@ All 9 phases of the Campus Security Management System project mandate have been 
 8. `docs/ADMIN_USER_MANUAL.md`: Administrative manual for portal navigation and audits.
 9. `docs/DEPLOYMENT_GUIDE.md`: Cloud deployment instructions for Vercel, Supabase, and Android.
 10. `docs/KNOWN_ISSUES.md`: Operational constraints, browser permissions, and security guardrails.
+

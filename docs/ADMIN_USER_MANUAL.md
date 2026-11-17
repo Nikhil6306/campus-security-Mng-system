@@ -86,3 +86,4 @@ When an emergency or SOS alert is triggered:
    - Incident type (Fire, Medical, Intrusion, Disturbance).
 4. Assign quick response teams (QRT) and mark incident as **In Progress**.
 5. Once resolved, enter resolution notes and mark as **Resolved**. All timestamps are immutably archived in the security audit trail.
+

@@ -97,3 +97,4 @@ At the conclusion of each shift:
 3. Enter handover notes regarding any pending visitors, vehicles remaining overnight, or maintenance issues.
 4. Both outgoing and incoming guards review and sign off.
 5. Tap **Clock Out Shift** and log out.
+

@@ -88,3 +88,4 @@ Gates and perimeter checkpoints frequently experience cellular dips. The app is 
 
 * **SOS Alerting:** Tapping the red siren on the dashboard brings up the **Emergency Alert** screen. Guards can trigger instant alarms for Medical, Fire, Intrusion, or Unrest, notifying supervisors across the campus network.
 * **Shift Handover:** Guards can review gate equipment (radios, barrier gates, flashlights), complete inspection checklists, and submit shift sign-offs directly from the **Profile** screen.
+

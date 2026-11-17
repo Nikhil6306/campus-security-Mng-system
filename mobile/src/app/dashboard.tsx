@@ -30,6 +30,7 @@ import {
   type GuardDashboardData,
   type GuardSession,
 } from '@/services/api';
+import { appStorage } from '@/services/storage';
 
 export default function DashboardScreen() {
   const [session, setSession] = useState<GuardSession | null>(getGuardSession());
@@ -39,6 +40,7 @@ export default function DashboardScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [shiftInProgress, setShiftInProgress] = useState(false);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [shiftLoading, setShiftLoading] = useState(false);
 
   const loadData = useCallback(async () => {
@@ -47,18 +49,24 @@ export default function DashboardScreen() {
       const current = getGuardSession();
       setSession(current);
 
-      const [data, recentLogs] = await Promise.all([
+      const [data, recentLogs, storedSessionId] = await Promise.all([
         getGuardDashboardData(),
         getRecentActivity(),
+        appStorage.getItem('active_session_id'),
       ]);
+
+      if (storedSessionId) {
+        setActiveSessionId(storedSessionId);
+        setShiftInProgress(true);
+      }
 
       if (data) {
         setDashData(data);
-        // If guard has active assignment in dashData
-        const activeAssigned = data.assignments?.some(
-          (a: any) => a.guardId === current?.refId && a.status === 'Active'
+        // Check if guard has active assignment in dashData
+        const activeAssignment = data.assignments?.find(
+          (a: any) => (a.guardId === current?.refId || !a.guardId) && a.status === 'Active'
         );
-        if (activeAssigned) {
+        if (activeAssignment) {
           setShiftInProgress(true);
         }
       } else {
@@ -86,9 +94,19 @@ export default function DashboardScreen() {
     setShiftLoading(true);
     try {
       if (!shiftInProgress) {
-        // Start shift
-        const res = await startGuardShift(session?.refId || 'default-assignment', 'Clocked in from Android Guard App');
+        // Find scheduled or available assignment for this guard
+        const scheduled = dashData?.assignments?.find(
+          (a: any) => (a.guardId === session?.refId || !a.guardId) && (a.status === 'Scheduled' || a.status === 'Active')
+        ) || dashData?.assignments?.[0];
+        const assignmentId = scheduled?.id || session?.refId || 'ASG-001';
+
+        const res = await startGuardShift(assignmentId, 'Clocked in from Android Guard App');
         if (res.ok) {
+          const sessId = res.data?.session?.id;
+          if (sessId) {
+            await appStorage.setItem('active_session_id', sessId);
+            setActiveSessionId(sessId);
+          }
           setShiftInProgress(true);
           await loadData();
         } else {
@@ -96,11 +114,14 @@ export default function DashboardScreen() {
         }
       } else {
         // End shift
+        const sessId = activeSessionId || (await appStorage.getItem('active_session_id')) || 'SES-0001';
         const res = await endGuardShift({
-          sessionId: 'current',
+          sessionId: sessId,
           generalNotes: 'Shift concluded via mobile application',
         });
         if (res.ok) {
+          await appStorage.removeItem('active_session_id');
+          setActiveSessionId(null);
           setShiftInProgress(false);
           await loadData();
         } else {

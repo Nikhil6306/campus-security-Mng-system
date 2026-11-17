@@ -106,3 +106,4 @@ eas login
 eas build --platform android --profile release
 ```
 Distribute `app-release.apk` to campus gate mobile devices according to `docs/ANDROID_INSTALLATION_GUIDE.md`.
+

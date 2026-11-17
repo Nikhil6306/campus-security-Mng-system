@@ -58,7 +58,7 @@ export default function CheckInScreen() {
         purpose,
         hostName: host.trim(),
         gate,
-        photoUrl: photo,
+        photoUri: photo,
       });
 
       if (!res.ok || !res.booking) {

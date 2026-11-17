@@ -28,7 +28,7 @@ export default function EmergencyHistoryScreen() {
   }, [loadIncidents]);
 
   return (
-    <Page title="Emergency Incident Log" subtitle="Authoritative Campus SOS Records">
+    <Page title="Emergency Incident Log" subtitle="Authoritative Campus SOS Records" bottomNav>
       <Notice>Real-time feed of campus emergency incidents, responder assignments, and resolution statuses.</Notice>
 
       {error ? <Notice tone="red">{error}</Notice> : null}

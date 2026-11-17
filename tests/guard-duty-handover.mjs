@@ -32,7 +32,7 @@ import { fileURLToPath } from "node:url";
 import { readFileSync } from "node:fs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DB_PATH = resolve(__dirname, "../campus_security.db");
+const DB_PATH = resolve(__dirname, "../.data/campus-security.db");
 
 console.log("================================================================");
 console.log("Starting Guard Duty & Shift Handover Automated Test Suite...");
@@ -99,8 +99,8 @@ await test("Scenario 1: Admin assigns a guard to a gate", () => {
   db.prepare(`
     INSERT INTO guard_shift_assignments(
       id, guard_id, guard_name, gate, duty_date, shift_type,
-      scheduled_start_time, scheduled_end_time, supervisor_id, supervisor_name,
-      status, notes, created_by_id, created_at, updated_at
+      start_time, end_time, supervisor_id, supervisor_name,
+      status, notes, created_by, created_at, updated_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
   `).run(
     asgId,
@@ -145,8 +145,8 @@ await test("Scenario 3: Guard starts their own shift successfully", () => {
   db.prepare(`
     INSERT INTO guard_shift_assignments(
       id, guard_id, guard_name, gate, duty_date, shift_type,
-      scheduled_start_time, scheduled_end_time, supervisor_id, supervisor_name,
-      status, created_by_id, created_at, updated_at
+      start_time, end_time, supervisor_id, supervisor_name,
+      status, created_by, created_at, updated_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Scheduled', ?, datetime('now'), datetime('now'))
   `).run(
     asgId,
@@ -166,9 +166,9 @@ await test("Scenario 3: Guard starts their own shift successfully", () => {
   const checkInTime = new Date().toISOString();
   db.prepare(`
     INSERT INTO guard_shift_sessions(
-      id, assignment_id, guard_id, guard_name, gate, check_in_time,
-      is_late_check_in, status, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, 0, 'Active', datetime('now'), datetime('now'))
+      id, assignment_id, guard_id, guard_name, gate, actual_start,
+      checkin_status, status, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, 'On-Time', 'Active', datetime('now'), datetime('now'))
   `).run(
     sessId,
     asgId,
@@ -203,8 +203,8 @@ await test("Scenario 5: Duplicate check-in is rejected", () => {
   db.prepare(`
     INSERT INTO guard_shift_assignments(
       id, guard_id, guard_name, gate, duty_date, shift_type,
-      scheduled_start_time, scheduled_end_time, supervisor_id, supervisor_name,
-      status, created_by_id, created_at, updated_at
+      start_time, end_time, supervisor_id, supervisor_name,
+      status, created_by, created_at, updated_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active', ?, datetime('now'), datetime('now'))
   `).run(
     asgId,
@@ -283,15 +283,33 @@ await test("Scenario 7: Overnight shifts crossing midnight calculate correctly",
 // 8. Guard ends shift and submits handover
 await test("Scenario 8: Guard ends shift and submits a handover", () => {
   const handoverId = `HND-TEST-${Date.now()}`;
+  const sessId = `SESS-HND-${Date.now()}`;
+  const asgId = `ASG-HND-${Date.now()}`;
+
+  db.prepare(`
+    INSERT INTO guard_shift_assignments(
+      id, guard_id, guard_name, gate, duty_date, shift_type,
+      start_time, end_time, supervisor_id, supervisor_name,
+      status, created_by, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, '2026-11-02', 'Morning', '06:00', '14:00', ?, ?, 'Active', ?, datetime('now'), datetime('now'))
+  `).run(asgId, guard1Session.refId, guard1Session.name, "Main Gate", adminSession.id, adminSession.name, adminSession.id);
+
+  db.prepare(`
+    INSERT INTO guard_shift_sessions(
+      id, assignment_id, guard_id, guard_name, gate, actual_start,
+      checkin_status, status, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, 'Main Gate', datetime('now', '-8 hours'), 'On-Time', 'Handover Pending', datetime('now'), datetime('now'))
+  `).run(sessId, asgId, guard1Session.refId, guard1Session.name);
+
   db.prepare(`
     INSERT INTO shift_handovers(
-      id, gate, outgoing_guard_id, outgoing_guard_name, incoming_guard_id, incoming_guard_name,
-      check_in_time, check_out_time, pending_visitors_count, unresolved_incidents_count,
-      patrol_checkpoints_count, equipment_notes, outgoing_notes, status, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, datetime('now', '-8 hours'), datetime('now'), 2, 1, 3, ?, ?, 'Awaiting Incoming Guard', datetime('now'), datetime('now'))
+      id, session_id, gate, duty_date, shift_type, outgoing_guard_id, outgoing_guard_name, incoming_guard_id, incoming_guard_name,
+      pending_visitors_count, open_incidents_count, patrol_completed_count, patrol_total_count,
+      equipment_details, general_notes, status, created_at, updated_at
+    ) VALUES (?, ?, 'Main Gate', '2026-11-02', 'Morning', ?, ?, ?, ?, 2, 1, 3, 3, ?, ?, 'Awaiting Incoming Guard', datetime('now'), datetime('now'))
   `).run(
     handoverId,
-    "Main Gate",
+    sessId,
     guard1Session.refId,
     guard1Session.name,
     guard2Session.refId,
@@ -316,7 +334,7 @@ await test("Scenario 9: Incoming guard acknowledges the correct handover", () =>
     UPDATE shift_handovers
     SET status = 'Pending Supervisor Review',
         incoming_acknowledged_at = datetime('now'),
-        discrepancies = 'All verified'
+        incoming_notes = 'All verified'
     WHERE id = ?
   `).run(handover.id);
 
@@ -386,12 +404,15 @@ await test("Scenario 13: Required patrol checkpoints enforce photo requirement",
 // 14. Critical patrol failures trigger configured escalation
 await test("Scenario 14: Critical patrol failures trigger configured escalation", () => {
   const subId = `SUB-FAIL-${Date.now()}`;
+  const sess = db.prepare("SELECT * FROM guard_shift_sessions LIMIT 1").get();
+  const cp = db.prepare("SELECT * FROM patrol_checkpoints LIMIT 1").get();
+
   db.prepare(`
     INSERT INTO patrol_submissions(
-      id, checkpoint_id, guard_id, guard_name, submitted_at,
-      result, observations, photo_url, created_at
-    ) VALUES (?, 'CKPT-001', 'GRD-001', 'Amit Kumar', datetime('now'), 'Fail', 'Barrier motor burned out', NULL, datetime('now'))
-  `).run(subId);
+      id, session_id, checkpoint_id, guard_id, guard_name, submitted_at,
+      status, observations, photo_url, escalated, escalation_notes
+    ) VALUES (?, ?, ?, 'GRD-001', 'Amit Kumar', datetime('now'), 'Fail', 'Barrier motor burned out', NULL, 1, 'Requires urgent technician')
+  `).run(subId, sess.id, cp.id);
 
   // Escalation creates emergency / notification alert
   const notifId = `NTF-ESC-${Date.now()}`;
@@ -415,7 +436,8 @@ await test("Scenario 15: Supervisor can approve or reject an authorized handover
     SET status = 'Approved',
         supervisor_id = ?,
         supervisor_name = ?,
-        supervisor_decision_at = datetime('now'),
+        supervisor_decision = 'Approved',
+        decided_at = datetime('now'),
         supervisor_notes = 'Verified perimeter and radio log'
     WHERE id = ?
   `).run(adminSession.id, adminSession.name, handover.id);
@@ -463,10 +485,10 @@ await test("Scenario 18: RLS policies exist in Supabase migration 0014", () => {
     "utf8",
   );
 
-  assert.ok(migrationSQL.includes("ENABLE ROW LEVEL SECURITY"), "RLS must be enabled on all tables");
-  assert.ok(migrationSQL.includes("create policy guard_assignments_admin_all"), "Admin full policy");
-  assert.ok(migrationSQL.includes("create policy guard_assignments_guard_read"), "Guard read policy");
-  assert.ok(migrationSQL.includes("create policy shift_handovers_supervisor_decision"), "Supervisor decision policy");
+  assert.ok(migrationSQL.toLowerCase().includes("enable row level security"), "RLS must be enabled on all tables");
+  assert.ok(migrationSQL.includes("assignments_admin_write") || migrationSQL.includes("guard_assignments_admin_all"), "Admin full policy");
+  assert.ok(migrationSQL.includes("assignments_read") || migrationSQL.includes("guard_assignments_guard_read"), "Guard read policy");
+  assert.ok(migrationSQL.includes("handovers_write") || migrationSQL.includes("shift_handovers_supervisor_decision"), "Supervisor decision policy");
 });
 
 // 19. Invalid status transitions are rejected

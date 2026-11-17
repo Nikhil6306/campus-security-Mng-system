@@ -76,3 +76,4 @@ import { NextResponse } from "next/server";
 sdk.dir=C\:\\Users\\DELL\\AppData\\Local\\Android\\Sdk
 ```
 - **Verification:** Gradle wrapper (`gradlew.bat`) successfully recognized the Android SDK and launched build tasks.
+
