@@ -36,9 +36,12 @@ import { badRequest } from "./errors";
  *     as an invalid image.
  */
 
+const defaultPhotoDir = process.env.VERCEL
+  ? "/tmp/visitor-photos"
+  : resolve(process.cwd(), ".data/visitor-photos");
+
 const ROOT = resolve(
-  process.cwd(),
-  process.env.VISITOR_PHOTO_DIR ?? ".data/visitor-photos",
+  process.env.VISITOR_PHOTO_DIR ?? defaultPhotoDir,
 );
 
 export interface StoredPhoto {

@@ -8,7 +8,7 @@
     "scheme": "campussecurity",
     "userInterfaceStyle": "light",
     "ios": {
-      "icon": "./assets/expo.icon",
+      "icon": "./assets/images/icon.png",
       "infoPlist": {
         "NSCameraUsageDescription": "Campus Security uses the camera to scan visitor passes and capture optional visitor photos.",
         "NSPhotoLibraryUsageDescription": "Campus Security lets guards choose an optional visitor photo."

@@ -57,3 +57,4 @@
   - 35 Dynamic Route Handlers (`ƒ`)
   - First Load JS shared by all: **102 kB**
   - Zero hydration or type mismatch warnings.
+

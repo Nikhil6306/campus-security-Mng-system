@@ -27,14 +27,13 @@ export type DatabaseDriver = "sqlite" | "postgres";
 
 const configuredDriver = process.env.DATABASE_DRIVER?.trim().toLowerCase();
 export const databaseDriver: DatabaseDriver =
-  configuredDriver === "postgres" || (!configuredDriver && process.env.VERCEL)
-    ? "postgres"
-    : "sqlite";
+  configuredDriver === "postgres" ? "postgres" : "sqlite";
 
-const DB_PATH = resolve(
-  process.cwd(),
-  process.env.DATABASE_FILE ?? ".data/campus-security.db",
-);
+const defaultDbPath = process.env.VERCEL
+  ? "/tmp/campus-security.db"
+  : resolve(process.cwd(), ".data/campus-security.db");
+
+const DB_PATH = resolve(process.env.DATABASE_FILE ?? defaultDbPath);
 const POSTGRES_URL =
   process.env.SUPABASE_DB_URL?.trim() || process.env.DATABASE_URL?.trim();
 
@@ -71,11 +70,13 @@ function getPostgresPool(): Pool {
   }
 
   if (!globalRef.__csmsPgPool) {
+    const isLocal = POSTGRES_URL.includes("localhost") || POSTGRES_URL.includes("127.0.0.1");
     globalRef.__csmsPgPool = new Pool({
       connectionString: POSTGRES_URL,
       max: process.env.VERCEL ? 2 : 10,
       idleTimeoutMillis: 10_000,
       connectionTimeoutMillis: 10_000,
+      ssl: isLocal ? false : { rejectUnauthorized: false },
       application_name: "campus-security-management",
     });
   }
@@ -184,8 +185,18 @@ function applyColumnMigrations(db: DatabaseSync): void {
 }
 
 function openDatabase(): DatabaseSync {
-  mkdirSync(dirname(DB_PATH), { recursive: true });
+  try {
+    mkdirSync(dirname(DB_PATH), { recursive: true });
+  } catch {
+    // Directory might already exist or running on /tmp
+  }
   const db = new DatabaseSync(DB_PATH);
+  try {
+    db.exec("PRAGMA journal_mode = WAL;");
+    db.exec("PRAGMA busy_timeout = 5000;");
+  } catch {
+    // PRAGMAs might not be supported in all modes
+  }
   db.exec(SCHEMA_SQL);
   applyColumnMigrations(db);
   // Indexes that depend on migrated columns, so only now are they creatable.
@@ -199,9 +210,6 @@ function openDatabase(): DatabaseSync {
 
 /** Returns the shared connection, creating and migrating the file on first use. */
 export function getDb(): DatabaseSync {
-  if (databaseDriver !== "sqlite") {
-    throw new Error("getDb() is only available when DATABASE_DRIVER=sqlite.");
-  }
   if (!globalRef.__csmsDb) {
     globalRef.__csmsDb = openDatabase();
   }
@@ -213,18 +221,12 @@ export function getDb(): DatabaseSync {
  * ------------------------------------------------------------------ */
 
 export function all<T = Row>(sql: string, params: SqlValue[] = []): T[] {
-  if (databaseDriver !== "sqlite") {
-    throw new Error("Use dbAll() for asynchronous PostgreSQL queries.");
-  }
   return getDb()
     .prepare(sql)
     .all(...params.map((value) => (typeof value === "boolean" ? Number(value) : value))) as T[];
 }
 
 export function get<T = Row>(sql: string, params: SqlValue[] = []): T | undefined {
-  if (databaseDriver !== "sqlite") {
-    throw new Error("Use dbGet() for asynchronous PostgreSQL queries.");
-  }
   return getDb()
     .prepare(sql)
     .get(...params.map((value) => (typeof value === "boolean" ? Number(value) : value))) as
@@ -233,9 +235,6 @@ export function get<T = Row>(sql: string, params: SqlValue[] = []): T | undefine
 }
 
 export function run(sql: string, params: SqlValue[] = []): { changes: number } {
-  if (databaseDriver !== "sqlite") {
-    throw new Error("Use dbRun() for asynchronous PostgreSQL queries.");
-  }
   const result = getDb()
     .prepare(sql)
     .run(...params.map((value) => (typeof value === "boolean" ? Number(value) : value)));

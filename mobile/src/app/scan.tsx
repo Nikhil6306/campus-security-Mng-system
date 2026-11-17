@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
 import { router } from 'expo-router';
-import { Camera, Flashlight, Keyboard, QrCode, Search, ShieldAlert, Sparkles } from 'lucide-react-native';
+import { Camera, Flashlight, Keyboard, QrCode, Search, ShieldAlert } from 'lucide-react-native';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { AppText, Button, Card, colors, Notice, Page } from '@/components/security-ui';
 
@@ -31,12 +31,8 @@ export default function ScanScreen() {
     router.push({ pathname: '/verification', params: { code: trimmed } });
   };
 
-  const openSample = (sampleCode: string) => {
-    router.push({ pathname: '/verification', params: { code: sampleCode } });
-  };
-
   return (
-    <Page title="Scan Visitor QR" subtitle="Gate Pass Scanner">
+    <Page title="Scan Visitor QR" subtitle="Gate Pass Scanner" bottomNav>
       <Notice>Point your camera at the visitor pass QR code. Live verification validates status with campus database.</Notice>
 
       {!permission ? (
@@ -140,31 +136,6 @@ export default function ScanScreen() {
             <Search size={18} color={colors.white} />
             <AppText style={styles.verifyBtnText}>Verify</AppText>
           </Pressable>
-        </View>
-      </Card>
-
-      {/* Quick Test Shortcuts */}
-      <Card style={styles.demoCard}>
-        <View style={styles.manualHeader}>
-          <Sparkles size={16} color={colors.amber} />
-          <AppText style={styles.demoTitle}>Quick Test Shortcuts</AppText>
-        </View>
-        <View style={styles.demoActions}>
-          {[
-            { label: 'Valid Approved', code: 'DSVV-VIS-2026-000124' },
-            { label: 'Checked In', code: 'DEMO-INS-003' },
-            { label: 'Pending Approval', code: 'DEMO-PND-002' },
-            { label: 'Expired Pass', code: 'DEMO-EXP-001' },
-          ].map((item) => (
-            <Pressable
-              key={item.label}
-              accessibilityRole="button"
-              style={styles.demoCode}
-              onPress={() => openSample(item.code)}
-            >
-              <AppText style={styles.demoCodeText}>{item.label}</AppText>
-            </Pressable>
-          ))}
         </View>
       </Card>
     </Page>

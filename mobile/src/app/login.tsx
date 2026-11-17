@@ -6,8 +6,8 @@ import { AppText, Button, Card, colors, Field, Notice, Page } from '@/components
 import { loginGuard } from '@/services/api';
 
 export default function LoginScreen() {
-  const [email, setEmail] = useState('security@dsvv.edu.in');
-  const [password, setPassword] = useState('Security@123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [visible, setVisible] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);

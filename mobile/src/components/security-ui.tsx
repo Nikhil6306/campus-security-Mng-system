@@ -1,6 +1,6 @@
 import type { LucideIcon } from 'lucide-react-native';
-import { ArrowLeft, ClipboardList, Home, ScanLine, Shield, UserRound } from 'lucide-react-native';
-import { router } from 'expo-router';
+import { ArrowLeft, ClipboardList, Home, QrCode, ScanLine, Shield, Siren, UserRound, UsersRound } from 'lucide-react-native';
+import { router, usePathname } from 'expo-router';
 import type { ComponentProps, ReactNode } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -75,20 +75,36 @@ export function Page({ title, subtitle, children, back = true, bottomNav = false
 }
 
 export function BottomNav() {
+  const pathname = usePathname();
   const items = [
     { label: 'Home', route: '/dashboard', icon: Home },
-    { label: 'History', route: '/history', icon: ClipboardList },
-    { label: 'Scan', route: '/scan', icon: ScanLine },
+    { label: 'Scan QR', route: '/scan', icon: QrCode },
+    { label: 'Visitors', route: '/history', icon: UsersRound },
+    { label: 'Alerts', route: '/emergency-history', icon: Siren },
     { label: 'Profile', route: '/profile', icon: UserRound },
   ] as const;
+
   return (
     <View style={styles.bottomNav}>
-      {items.map(({ label, route, icon: Icon }) => (
-        <Pressable key={route} accessibilityRole="button" onPress={() => router.replace(route)} style={styles.navItem}>
-          <Icon color={colors.muted} size={20} strokeWidth={2} />
-          <AppText style={styles.navLabel}>{label}</AppText>
-        </Pressable>
-      ))}
+      {items.map(({ label, route, icon: Icon }) => {
+        const isActive = pathname === route || (route === '/dashboard' && (pathname === '/' || pathname === ''));
+        return (
+          <Pressable
+            key={route}
+            accessibilityRole="button"
+            accessibilityState={{ selected: isActive }}
+            onPress={() => {
+              if (pathname !== route) router.replace(route as any);
+            }}
+            style={[styles.navItem, isActive && styles.navItemActive]}
+          >
+            <View style={[styles.navIconWrap, isActive && styles.navIconWrapActive]}>
+              <Icon color={isActive ? colors.blue : colors.muted} size={20} strokeWidth={isActive ? 2.4 : 2} />
+            </View>
+            <AppText style={[styles.navLabel, isActive && styles.navLabelActive]}>{label}</AppText>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
@@ -204,9 +220,27 @@ const styles = StyleSheet.create({
   sectionTitle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 },
   sectionTitleText: { fontSize: 16, fontWeight: '700', color: colors.ink },
   card: { backgroundColor: colors.white, borderRadius: 18, padding: 17, borderWidth: 1, borderColor: '#EDF1F6', shadowColor: '#213552', shadowOpacity: 0.045, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
-  bottomNav: { minHeight: 64, backgroundColor: colors.white, borderTopWidth: 1, borderTopColor: colors.line, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', paddingHorizontal: 10 },
-  navItem: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 4, minHeight: 56 },
+  bottomNav: {
+    minHeight: 64,
+    backgroundColor: colors.white,
+    borderTopWidth: 1,
+    borderTopColor: colors.line,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    paddingHorizontal: 6,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: -3 },
+  },
+  navItem: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 2, paddingVertical: 6 },
+  navItemActive: {},
+  navIconWrap: { width: 38, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  navIconWrapActive: { backgroundColor: colors.blueSoft },
   navLabel: { fontSize: 10, color: colors.muted, fontWeight: '600' },
+  navLabelActive: { color: colors.blue, fontWeight: '800' },
   button: { minHeight: 50, borderRadius: 14, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 9 },
   buttonPrimary: { backgroundColor: colors.blue },
   buttonDanger: { backgroundColor: colors.red },

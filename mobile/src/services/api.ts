@@ -5,15 +5,21 @@ import { appStorage } from './storage';
  * Mobile API Service connecting the Guard Mobile App to the Campus Security Management System backend.
  */
 
-const DEFAULT_SERVER_URL = Platform.select({
-  android: 'http://10.0.2.2:3000',
-  default: 'http://localhost:3000',
-});
-
-export const API_BASE_URL =
+// Production backend URL — the mobile app always uses a real server.
+// Set EXPO_PUBLIC_API_URL in your .env / EAS secrets to point at the deployed backend.
+// Fallback: Expo's Android emulator loopback address (10.0.2.2) maps to the
+// host's localhost; for a physical device the env var MUST be provided.
+const DEFAULT_SERVER_URL =
   process.env.EXPO_PUBLIC_API_URL ||
   process.env.NEXT_PUBLIC_APP_URL ||
-  DEFAULT_SERVER_URL;
+  (process.env.NODE_ENV === 'development'
+    ? Platform.select({
+        android: 'http://10.0.2.2:3000',
+        default: 'http://localhost:3000',
+      })
+    : '');
+
+export const API_BASE_URL = DEFAULT_SERVER_URL ?? '';
 
 export interface GuardSession {
   userId: string;
@@ -355,8 +361,8 @@ export async function getGuardDashboardData(date?: string): Promise<GuardDashboa
         criticalPatrolAlerts: 0,
       };
 
-      const dbState = stateJson.data || stateJson.state || {};
-      const visitors = dbState.visitRequests || [];
+      const dbState = stateJson.data?.state || stateJson.data || stateJson.state || {};
+      const visitors = dbState.visitRequests || dbState.visits || [];
       const vehicles = dbState.vehicles || [];
       const incidents = dbState.incidents || [];
 
@@ -657,6 +663,40 @@ export async function getCampusSnapshot(): Promise<any> {
 }
 
 /**
+ * Uploads a visitor photograph taken at the gate to /api/public/visitor-photo.
+ * Returns the opaque photoId used for booking registration.
+ */
+export async function uploadVisitorPhoto(
+  photoUri: string,
+): Promise<{ ok: boolean; photoId?: string; error?: string }> {
+  try {
+    const filename = photoUri.split('/').pop() || 'visitor.jpg';
+    const match = /\.(\w+)$/.exec(filename);
+    const type = match ? `image/${match[1].toLowerCase() === 'jpg' ? 'jpeg' : match[1].toLowerCase()}` : 'image/jpeg';
+
+    const formData = new FormData();
+    formData.append('photo', {
+      uri: photoUri,
+      name: filename,
+      type,
+    } as any);
+
+    const res = await fetch(`${API_BASE_URL}/api/public/visitor-photo`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    const json = await res.json().catch(() => ({}));
+    if (res.ok && json.ok && json.data?.photoId) {
+      return { ok: true, photoId: json.data.photoId };
+    }
+    return { ok: false, error: json.error?.message || 'Failed to upload visitor photo.' };
+  } catch (err) {
+    return { ok: false, error: 'Network failure while uploading photograph.' };
+  }
+}
+
+/**
  * Creates an authorized walk-in visitor booking at gate.
  */
 export async function createWalkInBooking(payload: {
@@ -665,9 +705,38 @@ export async function createWalkInBooking(payload: {
   purpose: string;
   hostName: string;
   gate: string;
-  photoUrl?: string;
+  photoUri?: string;
+  photoId?: string;
+  idType?: string;
+  idNumber?: string;
 }): Promise<{ ok: boolean; booking?: any; error?: string }> {
   try {
+    let resolvedPhotoId = payload.photoId;
+    if (!resolvedPhotoId && payload.photoUri) {
+      const uploadRes = await uploadVisitorPhoto(payload.photoUri);
+      if (uploadRes.ok && uploadRes.photoId) {
+        resolvedPhotoId = uploadRes.photoId;
+      }
+    }
+
+    const now = new Date();
+    // Ensure visitTime is within visiting hours (07:00 - 19:45) and strictly in the future today
+    const target = new Date(now.getTime() + 15 * 60 * 1000);
+    let h = target.getHours();
+    let m = Math.ceil(target.getMinutes() / 5) * 5;
+    if (m >= 60) {
+      h += 1;
+      m = 0;
+    }
+    if (h < 7) {
+      h = 7;
+      m = 0;
+    } else if (h >= 20) {
+      h = 19;
+      m = 45;
+    }
+    const visitTime = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+
     const res = await fetch(`${API_BASE_URL}/api/bookings`, {
       method: 'POST',
       headers: authHeaders(),
@@ -677,9 +746,11 @@ export async function createWalkInBooking(payload: {
         purpose: payload.purpose,
         hostName: payload.hostName,
         gate: payload.gate,
-        photoUrl: payload.photoUrl,
+        photoId: resolvedPhotoId,
+        idType: payload.idType || 'Aadhaar Card',
+        idNumber: payload.idNumber || 'Verified-At-Gate',
         visitDate: new Date().toISOString().split('T')[0],
-        visitTime: new Date().toTimeString().slice(0, 5),
+        visitTime,
       }),
     });
     const json = await res.json().catch(() => ({}));
@@ -689,5 +760,25 @@ export async function createWalkInBooking(payload: {
     return { ok: false, error: json.error?.message || 'Walk-in booking could not be created.' };
   } catch (err) {
     return { ok: false, error: 'Network failure while registering visitor.' };
+  }
+}
+
+/**
+ * Requests a password reset link sent to work email.
+ */
+export async function requestPasswordReset(email: string): Promise<{ ok: boolean; message?: string; error?: string }> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/auth/forgot-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email.trim() }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (res.ok && json.ok) {
+      return { ok: true, message: json.data?.message || 'Password reset link sent to your registered email.' };
+    }
+    return { ok: false, error: json.error?.message || 'Password reset request failed.' };
+  } catch (err) {
+    return { ok: false, error: 'Network failure while requesting password reset.' };
   }
 }
