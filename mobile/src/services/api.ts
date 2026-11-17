@@ -782,3 +782,98 @@ export async function requestPasswordReset(email: string): Promise<{ ok: boolean
     return { ok: false, error: 'Network failure while requesting password reset.' };
   }
 }
+
+/**
+ * Fetches the guard's own profile from /api/auth/me.
+ */
+export async function getMyProfile(): Promise<{ ok: boolean; profile?: any; error?: string }> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/auth/me`, {
+      headers: authHeaders(),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (res.ok && json.ok) {
+      return { ok: true, profile: json.data };
+    }
+    return { ok: false, error: json.error?.message || 'Could not load profile.' };
+  } catch {
+    return { ok: false, error: 'Network failure while loading profile.' };
+  }
+}
+
+/**
+ * Fetches visitors currently inside campus (Checked In status).
+ */
+export async function getCurrentVisitors(): Promise<any[]> {
+  try {
+    const snap = await getCampusSnapshot();
+    if (snap?.visitRequests) {
+      return snap.visitRequests.filter(
+        (v: any) => v.status === 'Checked In' || v.status === 'Meeting In Progress'
+      );
+    }
+  } catch {
+    // offline
+  }
+  return [];
+}
+
+/**
+ * Fetches visitor history with optional date range filter.
+ */
+export async function getVisitorHistory(dateFrom?: string, dateTo?: string): Promise<any[]> {
+  try {
+    const params = new URLSearchParams();
+    if (dateFrom) params.set('from', dateFrom);
+    if (dateTo) params.set('to', dateTo);
+    const q = params.toString() ? `?${params.toString()}` : '';
+    const res = await fetch(`${API_BASE_URL}/api/bookings${q}`, {
+      headers: authHeaders(),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (res.ok && (json.ok || Array.isArray(json.data))) {
+      return Array.isArray(json.data) ? json.data : json.data?.bookings || [];
+    }
+    // Fallback: use snapshot
+    const snap = await getCampusSnapshot();
+    return snap?.visitRequests || [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Fetches past guard shift sessions for history view.
+ */
+export async function getShiftHistory(): Promise<any[]> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/guard-duty/shift/history`, {
+      headers: authHeaders(),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (res.ok && json.ok) {
+      return json.data || [];
+    }
+  } catch {
+    // offline
+  }
+  return [];
+}
+
+/**
+ * Checks network connectivity by pinging the backend health endpoint.
+ */
+export async function checkConnectivity(): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch(`${API_BASE_URL}/api/state`, {
+      headers: authHeaders(),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    return res.ok || res.status < 500;
+  } catch {
+    return false;
+  }
+}

@@ -1,8 +1,9 @@
 # Campus Security Management System (CSMS)
 ## Known Issues, Security Guardrails & Operational Constraints
 
-**Date:** November 8, 2026  
+**Date:** November 17, 2026  
 **Document Status:** Production Operational Guidance  
+**Target Backend:** `https://campus-security-management.vercel.app`  
 
 ---
 
@@ -30,5 +31,6 @@
 ### 2.2 Android Camera Permissions
 * Android 11 through 15 enforce runtime permission prompts. When installing the APK on a new guard smartphone, security supervisors must ensure the officer selects **"While using the app"** during the first scan attempt.
 
-### 2.3 Local Machine Disk Space for Native Android Builds
-* Compiling a standalone release APK locally on Windows requires at least 8–10 GB of free storage on drive `C:\` due to Android NDK 27.1 requiring ~4 GB uncompressed. On workstations with low free disk capacity (<5 GB free), developers and administrators should use cloud-based EAS Build (`eas build --platform android`) or run the application directly via Expo Go (`npx expo start`), which has zero native compilation overhead.
+### 2.3 Cloud EAS Build vs Local Gradle Execution
+* Compiling a standalone release APK locally on Windows requires at least 8–10 GB of free storage on drive `C:\` due to Android NDK 27.1 requiring ~4 GB uncompressed, as well as unblocked loopback networking for Gradle daemon sockets.
+* **Recommended Build Workflow:** Run cloud-based EAS Build (`eas build --platform android --profile production`), which manages cloud compilation containers, generates signed standalone `.apk` files directly without local disk space usage, and outputs an instant download link and QR code for phone installation.
