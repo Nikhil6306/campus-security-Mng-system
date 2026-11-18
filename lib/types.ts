@@ -80,6 +80,7 @@ export const OPEN_STATUSES: VisitStatus[] = [
 ];
 
 export type VisitorType =
+  | "Visitor"
   | "Prospective Student"
   | "Parent/Guardian"
   | "Academic Visitor"
@@ -93,6 +94,7 @@ export type VisitorType =
   | "Other";
 
 export const VISITOR_TYPES: VisitorType[] = [
+  "Visitor",
   "Prospective Student",
   "Parent/Guardian",
   "Academic Visitor",
@@ -114,6 +116,7 @@ export const VISITOR_TYPES: VisitorType[] = [
  * the vocabulary a campus visitor recognises, so the portal does not show them.
  */
 export const PUBLIC_VISITOR_TYPES: VisitorType[] = [
+  "Visitor",
   "Prospective Student",
   "Parent/Guardian",
   "Academic Visitor",
@@ -454,6 +457,7 @@ export interface VisitRequest {
   expectedDuration?: ExpectedDuration | string;
   expectedDepartureTime?: string;
   numberOfVisitors?: number;
+  additionalVisitors?: number;
   vehicleRequired?: boolean;
   vehicleType?: string;
   vehicleNumber?: string;
@@ -768,7 +772,7 @@ export const ROLE_LABELS: Record<Role, string> = {
 
 /** Landing route after sign-in, per role. */
 export const ROLE_HOME: Record<Role, string> = {
-  super_admin: "/admin/dashboard",
+  super_admin: "/super-admin/dashboard",
   admin: "/admin/dashboard",
   security: "/security/dashboard",
   teacher: "/teacher/dashboard",

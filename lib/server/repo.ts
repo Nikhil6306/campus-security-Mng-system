@@ -202,6 +202,7 @@ export function mapVisit(r: Row): VisitRequest {
     expectedDuration: toText(r.expected_duration),
     expectedDepartureTime: toOptText(r.expected_departure_time),
     numberOfVisitors: toNum(r.number_of_visitors, 1),
+    additionalVisitors: Math.max(0, toNum(r.number_of_visitors, 1) - 1),
     vehicleRequired: hasCarVal,
     vehicleType: toOptText(r.vehicle_type),
     vehicleNumber: carNumVal,

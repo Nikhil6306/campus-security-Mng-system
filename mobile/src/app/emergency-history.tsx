@@ -40,8 +40,14 @@ export default function EmergencyHistoryScreen() {
         </Card>
       ) : incidents.length > 0 ? (
         incidents.map((event) => {
+          // Support both the shared EmergencyAlert fields (type/location/triggeredBy/triggeredAt)
+          // and legacy SOS incident fields (category/area/reporterName/createdAt)
+          const displayType = event.type || event.category || event.title || 'Emergency';
+          const displayLocation = event.location || event.area || event.building || 'Campus';
+          const displayBy = event.triggeredBy || event.reporterName || '';
+          const displayAt = event.triggeredAt || event.createdAt || '';
           const isCritical = event.severity === 'Critical';
-          const isResolved = event.status === 'Resolved' || event.status === 'Closed';
+          const isResolved = event.status === 'Resolved' || event.status === 'Closed' || event.status === 'RESOLVED';
           return (
             <Card key={event.id} style={styles.event}>
               <View style={styles.top}>
@@ -54,25 +60,25 @@ export default function EmergencyHistoryScreen() {
                   <AlertTriangle size={20} color={isCritical ? colors.red : colors.amber} />
                 </View>
                 <View style={styles.copy}>
-                  <AppText style={styles.title}>{event.category || event.title}</AppText>
+                  <AppText style={styles.title}>{displayType}</AppText>
                   <AppText style={styles.meta}>
-                    ID: <AppText style={styles.mono}>{event.id}</AppText> ·{' '}
-                    {event.createdAt ? new Date(event.createdAt).toLocaleTimeString() : 'Recent'}
+                    ID: <AppText style={styles.mono}>{event.id}</AppText>
+                    {displayAt ? ` · ${new Date(displayAt).toLocaleTimeString()}` : ''}
                   </AppText>
                 </View>
                 <Pill
-                  label={event.status || 'REPORTED'}
+                  label={event.status || 'Active'}
                   tone={isResolved ? 'green' : isCritical ? 'red' : 'amber'}
                 />
               </View>
 
               <View style={styles.divider} />
-              <AppText style={styles.meta}>Location: {event.area || event.building || 'Campus'}</AppText>
-              {event.description ? (
-                <AppText style={styles.details}>{event.description}</AppText>
+              <AppText style={styles.meta}>📍 Location: {displayLocation}</AppText>
+              {displayBy ? (
+                <AppText style={styles.responder}>🛡 Raised by: {displayBy}</AppText>
               ) : null}
-              {event.assignedGuardId ? (
-                <AppText style={styles.responder}>Assigned Responder: {event.assignedGuardId}</AppText>
+              {event.note || event.description ? (
+                <AppText style={styles.details}>{event.note || event.description}</AppText>
               ) : null}
             </Card>
           );

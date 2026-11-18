@@ -23,6 +23,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   requireVehicleDetails: true,
   autoExpireHours: 24,
   allowedVisitorTypes: [
+    "Visitor",
     "Prospective Student",
     "Parent/Guardian",
     "Academic Visitor",

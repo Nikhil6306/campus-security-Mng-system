@@ -10,5 +10,11 @@ export const metadata: Metadata = {
 
 /** Administrator portal — the server rejects accounts of any other role here. */
 export default function AdminLoginPage() {
-  return <LoginScreen expectedRole="admin" />;
+  return (
+    <LoginScreen
+      expectedRole="admin"
+      title="Administrator Login"
+      subtitle="Access the campus security administrative dashboard, approvals and reports."
+    />
+  );
 }

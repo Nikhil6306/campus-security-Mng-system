@@ -4,7 +4,9 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  AlertOctagon,
   AlertTriangle,
+  ArrowRight,
   BadgeCheck,
   CalendarDays,
   Car,
@@ -18,6 +20,7 @@ import {
   Users,
 } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toaster";
 import { InlineLoader } from "@/components/shared/states";
@@ -26,6 +29,7 @@ import { ThemeToggle } from "@/components/shared/theme-toggle";
 import { useAuth } from "@/components/providers/auth-provider";
 import { useData } from "@/components/providers/data-provider";
 import { getDashboardStats } from "@/lib/selectors";
+import { ROLE_LABELS, ROLE_HOME } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const tabs = [
@@ -76,22 +80,67 @@ export function SecurityShell({ children }: { children: React.ReactNode }) {
   const { session, ready, signOut } = useAuth();
   const { db } = useData();
 
+  const isLoginRoute = pathname === "/security/login";
   const stats = getDashboardStats(db);
-  const allowed = session?.role === "security" || session?.role === "admin";
+  const allowed = session?.role === "security" || session?.role === "admin" || session?.role === "super_admin";
 
   React.useEffect(() => {
-    if (!ready) return;
+    if (!ready || isLoginRoute) return;
     if (!session) {
-      router.replace(`/login?next=${encodeURIComponent(pathname)}`);
+      router.replace(`/security/login?next=${encodeURIComponent(pathname)}`);
     } else if (!allowed) {
-      router.replace("/admin/dashboard");
+      router.replace(session.role === "super_admin" ? "/super-admin/dashboard" : "/admin/dashboard");
     }
-  }, [ready, session, allowed, pathname, router]);
+  }, [ready, session, allowed, isLoginRoute, pathname, router]);
 
-  if (!ready || !session || !allowed) {
+  if (isLoginRoute) return <>{children}</>;
+
+  if (!ready) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-navy">
         <InlineLoader label="Opening the gate console…" />
+      </div>
+    );
+  }
+
+  // Not signed in
+  if (!session) {
+    return (
+      <div className="flex min-h-dvh items-center justify-center bg-navy">
+        <InlineLoader label="Redirecting to Security login…" />
+      </div>
+    );
+  }
+
+  // Signed in with non-security/non-admin role: STRICT ACCESS DENIAL (403)
+  if (!allowed) {
+    const permittedHome = ROLE_HOME[session.role] ?? "/";
+    return (
+      <div className="flex min-h-dvh items-center justify-center bg-muted/40 p-4">
+        <div className="mx-auto max-w-md rounded-2xl border border-destructive/30 bg-card p-6 sm:p-8 text-center shadow-lg">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-destructive/10 text-destructive">
+            <AlertOctagon className="h-7 w-7" />
+          </div>
+          <Badge variant="destructive" className="mb-3">
+            Access Denied · 403 Forbidden
+          </Badge>
+          <h2 className="text-xl font-bold tracking-tight">Security Clearance Required</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            You are signed in as <strong>{session.name}</strong> ({ROLE_LABELS[session.role]}).
+            This section is restricted to Security Personnel and Campus Administrators.
+          </p>
+          <div className="mt-6 flex flex-col gap-2">
+            <Button asChild>
+              <Link href={permittedHome}>
+                Go to Your Permitted Dashboard
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+            <Button variant="outline" onClick={() => signOut()}>
+              Sign Out & Switch Account
+            </Button>
+          </div>
+        </div>
       </div>
     );
   }

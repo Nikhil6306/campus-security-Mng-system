@@ -1,14 +1,9 @@
-import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
-import { LoginScreen } from "@/components/admin/login-screen";
-
-export const metadata: Metadata = {
-  title: "Admin Login",
-  description: "Sign in to the campus security management console.",
-  robots: { index: false, follow: false },
-};
-
-/** Administrator portal — the server rejects accounts of any other role here. */
+/**
+ * Administrator portal index — redirects to the admin dashboard.
+ * Unauthenticated users are routed to /admin/login by middleware / shell.
+ */
 export default function AdminPage() {
-  return <LoginScreen expectedRole="admin" />;
+  redirect("/admin/dashboard");
 }

@@ -131,6 +131,19 @@ function preprocessBookingInput(val: unknown) {
     raw.vehicleNumber = raw.carNumber;
   }
 
+  if (raw.additionalVisitors !== undefined && raw.numberOfVisitors === undefined) {
+    const add = Number(raw.additionalVisitors);
+    if (!isNaN(add) && add >= 0) {
+      raw.numberOfVisitors = add + 1;
+    }
+  }
+  if (raw.additionalPeople !== undefined && raw.numberOfVisitors === undefined) {
+    const add = Number(raw.additionalPeople);
+    if (!isNaN(add) && add >= 0) {
+      raw.numberOfVisitors = add + 1;
+    }
+  }
+
   return raw;
 }
 
@@ -163,6 +176,8 @@ export const bookingObject = z.object({
   expectedDuration: z.string().optional().default("30 minutes"),
   expectedDepartureTime: z.string().trim().optional().default(""),
   numberOfVisitors: z.number().optional().default(1),
+  additionalVisitors: z.number().optional().default(0),
+  additionalPeople: z.number().optional().default(0),
   vehicleRequired: z.boolean().optional().default(false),
   vehicleType: z.string().trim().optional().default(""),
   vehicleNumber: z.string().optional().default(""),

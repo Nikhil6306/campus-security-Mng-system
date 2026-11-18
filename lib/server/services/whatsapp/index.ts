@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { AuthSession, VisitRequest } from "@/lib/types";
+import { getAppOrigin } from "../../app-origin";
 import { all, get, run, toNum, toOptText, toText } from "../../db";
 import type { Row } from "../../db";
 import { publish } from "../../events";
@@ -523,7 +524,7 @@ export function templateCatalogue(): TemplateEntry[] {
   const context: TemplateContext = {
     booking,
     campusName: settings.campusName,
-    passUrl: `${(process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000").replace(/\/+$/, "")}/visitor/pass/${booking.passToken ?? booking.id}`,
+    passUrl: `${getAppOrigin()}/visitor/pass/${booking.passToken ?? booking.id}`,
     securityPhone: settings.securityDeskPhone,
     gate: booking.gate,
     rejectionReason: booking.rejectionReason ?? "Host unavailable on that date.",

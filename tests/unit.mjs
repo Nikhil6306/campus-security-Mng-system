@@ -560,7 +560,7 @@ test("Section A: Email is optional but validated when provided", () => {
   assert.equal(checkEmail("visitor@example.com"), undefined);
 });
 
-test("Section A: Visitor category supports standard and 'Other' with conditional text", () => {
+test("Section A: Visitor category supports standard, 'Visitor' and 'Other' with conditional text", () => {
   function checkCategory(category, otherText) {
     if (!category) return "Please select a visitor category.";
     if (category === "Other" && (!otherText || !otherText.trim())) {
@@ -569,9 +569,54 @@ test("Section A: Visitor category supports standard and 'Other' with conditional
     return undefined;
   }
   assert.equal(checkCategory("", ""), "Please select a visitor category.");
+  assert.equal(checkCategory("Visitor", ""), undefined);
   assert.equal(checkCategory("Other", ""), "Please specify your visitor category.");
   assert.equal(checkCategory("Other", "Journalist"), undefined);
   assert.equal(checkCategory("Academic Visitor", ""), undefined);
+});
+
+test("Section A: Number of Additional People requires non-negative integer", () => {
+  function checkAdditionalPeople(val) {
+    if (val === "" || val === undefined || val === null) {
+      return "Number of additional people is required (enter 0 if visiting alone).";
+    }
+    const num = Number(val);
+    if (isNaN(num) || !Number.isInteger(num) || num < 0) {
+      return "Enter 0 or a positive whole number.";
+    }
+    return undefined;
+  }
+  assert.equal(checkAdditionalPeople(""), "Number of additional people is required (enter 0 if visiting alone).");
+  assert.equal(checkAdditionalPeople(null), "Number of additional people is required (enter 0 if visiting alone).");
+  assert.equal(checkAdditionalPeople(-1), "Enter 0 or a positive whole number.");
+  assert.equal(checkAdditionalPeople(2.5), "Enter 0 or a positive whole number.");
+  assert.equal(checkAdditionalPeople("abc"), "Enter 0 or a positive whole number.");
+  assert.equal(checkAdditionalPeople(0), undefined);
+  assert.equal(checkAdditionalPeople("0"), undefined);
+  assert.equal(checkAdditionalPeople(1), undefined);
+  assert.equal(checkAdditionalPeople("3"), undefined);
+
+  // Calculation test: 0 additional means 1 visitor, 2 additional means 3 visitors
+  const calcTotal = (additional) => Math.max(0, Math.floor(Number(additional) || 0)) + 1;
+  assert.equal(calcTotal(0), 1);
+  assert.equal(calcTotal("1"), 2);
+  assert.equal(calcTotal(4), 5);
+});
+
+test("Section A: Conditional Faculty / Host field is hidden and cleared for Visitor category", () => {
+  function resolveHost(category, selectedHostId) {
+    if (category === "Visitor") {
+      return { showHostField: false, hostId: undefined };
+    }
+    return { showHostField: true, hostId: selectedHostId ? selectedHostId.trim() : undefined };
+  }
+  // When category is 'Visitor', host field is hidden and cleared
+  assert.deepEqual(resolveHost("Visitor", "TCH-001"), { showHostField: false, hostId: undefined });
+  assert.deepEqual(resolveHost("Visitor", ""), { showHostField: false, hostId: undefined });
+
+  // When category is 'Academic Visitor' or other, host field is shown and preserved
+  assert.deepEqual(resolveHost("Academic Visitor", "TCH-001"), { showHostField: true, hostId: "TCH-001" });
+  assert.deepEqual(resolveHost("Guest", "TCH-002"), { showHostField: true, hostId: "TCH-002" });
 });
 
 test("Section B: Expected departure time must be after expected arrival time", () => {
