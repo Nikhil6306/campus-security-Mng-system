@@ -31,7 +31,15 @@ const highlights = [
  * `expectedRole` is passed through to the sign-in call, where the server
  * refuses a valid account that belongs to a different portal.
  */
-export function LoginScreen({ expectedRole }: { expectedRole?: Role } = {}) {
+export function LoginScreen({
+  expectedRole,
+  title,
+  subtitle,
+}: {
+  expectedRole?: Role;
+  title?: string;
+  subtitle?: string;
+} = {}) {
   return (
     <div className="grid min-h-dvh lg:grid-cols-2">
       {/* Brand panel */}
@@ -97,7 +105,7 @@ export function LoginScreen({ expectedRole }: { expectedRole?: Role } = {}) {
           </div>
 
           <Suspense fallback={<InlineLoader label="Preparing sign-in…" />}>
-            <LoginForm expectedRole={expectedRole} />
+            <LoginForm expectedRole={expectedRole} title={title} subtitle={subtitle} />
           </Suspense>
         </div>
       </section>

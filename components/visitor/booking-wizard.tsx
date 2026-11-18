@@ -18,6 +18,7 @@ import {
   ShieldCheck,
   Tag,
   User,
+  Users,
   XCircle,
 } from "lucide-react";
 
@@ -52,6 +53,7 @@ import {
 } from "@/lib/validation";
 
 const VISITOR_CATEGORIES = [
+  "Visitor",
   "Prospective Student",
   "Parent/Guardian",
   "Academic Visitor",
@@ -77,6 +79,7 @@ interface FormState {
   // Section A: Personal Information
   fullName: string;
   mobileNumber: string;
+  additionalVisitors: number | string;
   email: string;
   visitorCategory: string;
   otherCategory: string;
@@ -101,8 +104,9 @@ interface FormState {
 const initialState: FormState = {
   fullName: "",
   mobileNumber: "",
+  additionalVisitors: 0,
   email: "",
-  visitorCategory: "Guest",
+  visitorCategory: "Visitor",
   otherCategory: "",
   hostId: "",
   purpose: "Faculty Meeting",
@@ -173,6 +177,21 @@ export function BookingWizard() {
     const mobileErr = validateMobile(form.mobileNumber);
     if (mobileErr) nextErrors.mobileNumber = mobileErr;
 
+    // Number of Additional People (required: positive whole number or 0)
+    if (
+      form.additionalVisitors === "" ||
+      form.additionalVisitors === undefined ||
+      form.additionalVisitors === null
+    ) {
+      nextErrors.additionalVisitors =
+        "Number of additional people is required (enter 0 if visiting alone).";
+    } else {
+      const addVal = Number(form.additionalVisitors);
+      if (isNaN(addVal) || !Number.isInteger(addVal) || addVal < 0) {
+        nextErrors.additionalVisitors = "Enter 0 or a positive whole number.";
+      }
+    }
+
     if (form.email.trim()) {
       const emailErr = validateEmail(form.email, true);
       if (emailErr) nextErrors.email = emailErr;
@@ -182,6 +201,11 @@ export function BookingWizard() {
       nextErrors.visitorCategory = "Please select a visitor category.";
     } else if (form.visitorCategory === "Other" && !form.otherCategory.trim()) {
       nextErrors.otherCategory = "Please specify your visitor category.";
+    }
+
+    // If Visitor category is "Visitor", disable any faculty-related validation
+    if (form.visitorCategory === "Visitor") {
+      delete nextErrors.hostId;
     }
 
     // Section B: Visit Schedule
@@ -251,10 +275,16 @@ export function BookingWizard() {
             : "Other"
           : form.visitorCategory;
 
+      const addPeople = Math.max(0, Math.floor(Number(form.additionalVisitors) || 0));
+      const totalVisitors = addPeople + 1;
+
       const payload = {
         fullName: form.fullName.trim(),
         mobileNumber: form.mobileNumber.replace(/[\s-]/g, ""),
         email: form.email.trim() || undefined,
+        numberOfVisitors: totalVisitors,
+        additionalVisitors: addPeople,
+        additionalPeople: addPeople,
         visitorType: effectiveCategory,
         visitDate: form.visitDate,
         visitTime: form.arrivalTime,
@@ -271,7 +301,8 @@ export function BookingWizard() {
           form.vehicleRequired === "yes"
             ? normaliseVehicleNumber(form.vehicleNumber)
             : undefined,
-        hostId: form.hostId ? form.hostId.trim() : undefined,
+        hostId:
+          form.visitorCategory !== "Visitor" && form.hostId ? form.hostId.trim() : undefined,
         purpose: form.purpose ? form.purpose.trim() : "Faculty Meeting",
         idempotencyKey: idempotencyKeyRef.current,
       };
@@ -485,6 +516,14 @@ export function BookingWizard() {
                   <p className="font-medium text-foreground">{created.visitorType || form.visitorCategory}</p>
                 </div>
                 <div>
+                  <span className="text-xs text-muted-foreground">Accompanying People</span>
+                  <p className="font-medium text-foreground">
+                    {Number(form.additionalVisitors) > 0
+                      ? `${form.additionalVisitors} additional (${Number(form.additionalVisitors) + 1} visitors total)`
+                      : "Visiting alone (0 additional)"}
+                  </p>
+                </div>
+                <div>
                   <span className="text-xs text-muted-foreground">Visit Date & Arrival Time</span>
                   <p className="font-medium text-foreground">
                     {formatDate(created.visitDate || form.visitDate)} at {created.visitTime || form.arrivalTime}
@@ -662,6 +701,37 @@ export function BookingWizard() {
                 </div>
               </FormField>
 
+              {/* Number of Additional People */}
+              <FormField
+                id="additionalVisitors"
+                label="Number of Additional People"
+                required
+                error={errors.additionalVisitors}
+                hint="Enter 0 if you are visiting alone. Otherwise, enter the number of people accompanying you."
+              >
+                <div className="relative">
+                  <Users className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" aria-hidden />
+                  <Input
+                    id="additionalVisitors"
+                    type="number"
+                    min={0}
+                    step={1}
+                    placeholder="Enter number of additional people"
+                    className="pl-9 font-mono"
+                    value={form.additionalVisitors}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === "") {
+                        update("additionalVisitors", "");
+                      } else {
+                        const parsed = parseInt(val, 10);
+                        update("additionalVisitors", isNaN(parsed) ? "" : Math.max(0, parsed));
+                      }
+                    }}
+                  />
+                </div>
+              </FormField>
+
               {/* Email Address (Optional) */}
               <FormField
                 id="email"
@@ -696,7 +766,28 @@ export function BookingWizard() {
                   <select
                     id="visitorCategory"
                     value={form.visitorCategory}
-                    onChange={(e) => update("visitorCategory", e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setForm((prev) => ({
+                        ...prev,
+                        visitorCategory: val,
+                        hostId: val === "Visitor" ? "" : prev.hostId,
+                      }));
+                      if (errors.visitorCategory) {
+                        setErrors((prev) => {
+                          const next = { ...prev };
+                          delete next.visitorCategory;
+                          return next;
+                        });
+                      }
+                      if (val === "Visitor" && errors.hostId) {
+                        setErrors((prev) => {
+                          const next = { ...prev };
+                          delete next.hostId;
+                          return next;
+                        });
+                      }
+                    }}
                     className="flex h-9 w-full rounded-md border border-input bg-background pl-9 pr-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {VISITOR_CATEGORIES.map((cat) => (
@@ -729,29 +820,31 @@ export function BookingWizard() {
                 </div>
               )}
 
-              {/* Faculty Member / Host Selection Dropdown */}
-              <FormField
-                id="hostId"
-                label="Meeting Faculty / Host"
-                hint="Select the faculty member or staff you are visiting (required for faculty approvals)."
-              >
-                <div className="relative">
-                  <User className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground pointer-events-none" aria-hidden />
-                  <select
-                    id="hostId"
-                    value={form.hostId}
-                    onChange={(e) => update("hostId", e.target.value)}
-                    className="flex h-9 w-full rounded-md border border-input bg-background pl-9 pr-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <option value="">General Campus Visit (No specific faculty)</option>
-                    {hosts.map((h) => (
-                      <option key={h.id} value={h.id}>
-                        {h.name} — {h.designation} ({h.department})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </FormField>
+              {/* Faculty Member / Host Selection Dropdown (Hidden when Visitor Category is "Visitor") */}
+              {form.visitorCategory !== "Visitor" && (
+                <FormField
+                  id="hostId"
+                  label="Meeting Faculty / Host"
+                  hint="Select the faculty member or staff you are visiting (required for faculty approvals)."
+                >
+                  <div className="relative">
+                    <User className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground pointer-events-none" aria-hidden />
+                    <select
+                      id="hostId"
+                      value={form.hostId}
+                      onChange={(e) => update("hostId", e.target.value)}
+                      className="flex h-9 w-full rounded-md border border-input bg-background pl-9 pr-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <option value="">General Campus Visit (No specific faculty)</option>
+                      {hosts.map((h) => (
+                        <option key={h.id} value={h.id}>
+                          {h.name} — {h.designation} ({h.department})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </FormField>
+              )}
 
               {/* Purpose of Visit */}
               <FormField

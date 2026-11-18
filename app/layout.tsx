@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 
 import { AppProviders } from "@/components/providers";
+import { getAppOrigin } from "@/lib/server/app-origin";
 
 import "./globals.css";
 
@@ -15,8 +16,7 @@ const mono = { variable: "font-mono" };
  * values each page declares; set `NEXT_PUBLIC_SITE_URL` in the deployment
  * environment so canonical URLs and social cards point at the real host.
  */
-const siteUrl =
-  process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+const siteUrl = getAppOrigin(process.env.NEXT_PUBLIC_SITE_URL);
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),

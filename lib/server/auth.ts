@@ -5,6 +5,7 @@ import { cookies, headers } from "next/headers";
 import type { AuthSession, Role } from "@/lib/types";
 import { all, get, run, tx } from "./db";
 import { randomToken, verifyPassword, hashPassword } from "./password";
+import { getAppOrigin } from "./app-origin";
 import { getSupabaseAdminClient, getSupabaseServerClient, isSupabaseConfigured } from "@/lib/supabase";
 
 /**
@@ -276,7 +277,7 @@ export async function requestPasswordReset(email: string, redirectTo?: string): 
   if (isSupabaseConfigured()) {
     const sb = getSupabaseServerClient();
     const { error } = await sb.auth.resetPasswordForEmail(cleanEmail, {
-      redirectTo: redirectTo || `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/reset-password`,
+      redirectTo: redirectTo || `${getAppOrigin()}/reset-password`,
     });
 
     if (error) {

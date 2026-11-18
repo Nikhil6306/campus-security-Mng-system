@@ -26,5 +26,6 @@ export async function POST() {
   if (token) await signOutToken(token);
 
   store.set(SESSION_COOKIE, "", { httpOnly: true, path: "/", maxAge: 0 });
+  store.set("csms_role", "", { httpOnly: false, path: "/", maxAge: 0 });
   return NextResponse.json({ ok: true, data: null });
 }

@@ -23,7 +23,15 @@ import { validateEmail, type FieldErrors } from "@/lib/validation";
  * success the server sets an httpOnly session cookie, so the browser never
  * holds a token it could leak.
  */
-export function LoginForm({ expectedRole }: { expectedRole?: Role } = {}) {
+export function LoginForm({
+  expectedRole,
+  title,
+  subtitle,
+}: {
+  expectedRole?: Role;
+  title?: string;
+  subtitle?: string;
+} = {}) {
   const router = useRouter();
   const params = useSearchParams();
   const { signIn, session, ready } = useAuth();
@@ -36,10 +44,29 @@ export function LoginForm({ expectedRole }: { expectedRole?: Role } = {}) {
 
   const nextParam = params.get("next");
 
+  const getSafeRedirect = (target: string | null, role: Role): string => {
+    if (!target) return ROLE_HOME[role];
+    if (target.startsWith("/super-admin") && role !== "super_admin") {
+      return ROLE_HOME[role];
+    }
+    if (target.startsWith("/admin") && role !== "admin" && role !== "super_admin") {
+      return ROLE_HOME[role];
+    }
+    if (
+      target.startsWith("/security") &&
+      role !== "security" &&
+      role !== "admin" &&
+      role !== "super_admin"
+    ) {
+      return ROLE_HOME[role];
+    }
+    return target;
+  };
+
   // Already signed in — skip the form.
   React.useEffect(() => {
     if (ready && session && !submitting) {
-      router.replace(nextParam ?? ROLE_HOME[session.role]);
+      router.replace(getSafeRedirect(nextParam, session.role));
     }
   }, [ready, session, router, nextParam, submitting]);
 
@@ -62,7 +89,7 @@ export function LoginForm({ expectedRole }: { expectedRole?: Role } = {}) {
     try {
       const account = await signIn(email, password, expectedRole);
       toast.success(`Signed in as ${account.name}.`);
-      router.replace(nextParam ?? ROLE_HOME[account.role]);
+      router.replace(getSafeRedirect(nextParam, account.role));
     } catch (error) {
       const details = fieldErrors(error);
       const message = errorMessage(error, "We could not sign you in.");
@@ -73,18 +100,32 @@ export function LoginForm({ expectedRole }: { expectedRole?: Role } = {}) {
   };
 
   const accounts = expectedRole
-    ? DEMO_ACCOUNTS.filter(
-        (a) => a.role === expectedRole || (expectedRole === "admin" && a.role === "super_admin"),
-      )
+    ? DEMO_ACCOUNTS.filter((a) => a.role === expectedRole)
     : DEMO_ACCOUNTS;
+
+  const defaultTitle =
+    expectedRole === "super_admin"
+      ? "Super Admin Login"
+      : expectedRole === "admin"
+        ? "Administrator Login"
+        : expectedRole === "security"
+          ? "Security Guard Login"
+          : "Sign in to the console";
+
+  const defaultSubtitle =
+    expectedRole === "super_admin"
+      ? "Restricted portal for Campus Security Directors and Super Administrators."
+      : expectedRole === "admin"
+        ? "Access the campus security administrative dashboard, approvals and reports."
+        : expectedRole === "security"
+          ? "Gate operations console — verification, check-in, check-out and patrol dispatch."
+          : "Access the campus security dashboard, approvals and gate operations.";
 
   return (
     <div className="w-full max-w-md space-y-6">
       <div className="space-y-1.5">
-        <h1 className="text-2xl font-semibold tracking-tight">Sign in to the console</h1>
-        <p className="text-sm text-muted-foreground">
-          Access the campus security dashboard, approvals and gate operations.
-        </p>
+        <h1 className="text-2xl font-semibold tracking-tight">{title ?? defaultTitle}</h1>
+        <p className="text-sm text-muted-foreground">{subtitle ?? defaultSubtitle}</p>
       </div>
 
       <form onSubmit={handleSubmit} noValidate className="space-y-4">

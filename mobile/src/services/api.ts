@@ -499,8 +499,24 @@ export async function submitPatrolCheckpoint(payload: {
   }
 }
 
+// Map mobile emergency categories to the shared website emergency types
+function mapCategoryToType(
+  category: string,
+): 'Security Emergency' | 'Medical Emergency' | 'Fire Emergency' | 'Evacuation' | 'Suspicious Activity' {
+  if (category === 'Medical Emergency') return 'Medical Emergency';
+  if (category === 'Fire or Smoke') return 'Fire Emergency';
+  if (category === 'Security Threat') return 'Security Emergency';
+  if (category === 'Suspicious Activity') return 'Suspicious Activity';
+  // 'Accident or Injury' | 'Other Emergency' → Evacuation as closest match
+  return 'Evacuation';
+}
+
 /**
- * Emergency SOS: Raises an instant emergency panic incident.
+ * Emergency SOS: Raises an instant emergency alert.
+ *
+ * Posts to /api/emergency (the SHARED table used by both the mobile app and the
+ * website admin dashboard), so that every alert a guard raises on the phone
+ * immediately appears in the admin Emergency log with the guard's name.
  */
 export async function triggerEmergencySos(payload: {
   category: 'Medical Emergency' | 'Fire or Smoke' | 'Security Threat' | 'Suspicious Activity' | 'Accident or Injury' | 'Other Emergency';
@@ -514,14 +530,23 @@ export async function triggerEmergencySos(payload: {
   evidenceUrl?: string | null;
 }): Promise<{ ok: boolean; incident?: any; error?: string }> {
   try {
-    const res = await fetch(`${API_BASE_URL}/api/sos`, {
+    // Build the payload that /api/emergency expects
+    const body = {
+      type: mapCategoryToType(payload.category),
+      severity: payload.severity,
+      location: payload.area,
+      note: payload.description ?? payload.title ?? undefined,
+    };
+    const res = await fetch(`${API_BASE_URL}/api/emergency`, {
       method: 'POST',
       headers: authHeaders(),
-      body: JSON.stringify(payload),
+      body: JSON.stringify(body),
     });
     const json = await res.json().catch(() => ({}));
-    if (res.ok && (json.ok || json.id)) {
-      return { ok: true, incident: json.data || json };
+    if (res.ok) {
+      // /api/emergency returns the EmergencyAlert object directly (wrapped in ok/data or bare)
+      const alert = json.data ?? json;
+      return { ok: true, incident: { id: alert.id, category: payload.category, severity: payload.severity, area: payload.area, status: alert.status ?? 'Active' } };
     }
     return { ok: false, error: json.error?.message || 'Emergency alert could not be dispatched.' };
   } catch (err) {
@@ -530,18 +555,21 @@ export async function triggerEmergencySos(payload: {
 }
 
 /**
- * Emergency SOS: Fetches real emergency incidents from server.
+ * Emergency SOS: Fetches real emergency incidents from the shared /api/emergency endpoint.
+ * Returns the same list that the admin dashboard uses, so mobile and website stay in sync.
  */
 export async function getEmergencyIncidents(status?: string): Promise<any[]> {
   try {
-    const q = status ? `?status=${encodeURIComponent(status)}` : '';
-    const res = await fetch(`${API_BASE_URL}/api/sos${q}`, {
+    const res = await fetch(`${API_BASE_URL}/api/emergency`, {
       headers: authHeaders(),
     });
     const json = await res.json().catch(() => ([]));
-    if (res.ok && Array.isArray(json)) {
-      return json;
+    // /api/emergency returns EmergencyAlert[] directly
+    const list: any[] = Array.isArray(json) ? json : json.data ?? [];
+    if (status) {
+      return list.filter((e: any) => e.status === status);
     }
+    return list;
   } catch (err) {
     console.warn('[mobile-api] getEmergencyIncidents error:', err);
   }

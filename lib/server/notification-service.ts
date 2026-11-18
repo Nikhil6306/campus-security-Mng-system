@@ -1,5 +1,6 @@
 import "server-only";
 
+import { getAppOrigin } from "./app-origin";
 import type { Incident, Teacher, VisitRequest } from "@/lib/types";
 import { STATUS_CODES } from "@/lib/types";
 import { readSettings } from "./repo";
@@ -76,10 +77,7 @@ function maskRecipient(value: string): string {
  * sending anything a real visitor will open.
  */
 function appOrigin(): string {
-  const configured =
-    process.env.NEXT_PUBLIC_APP_URL ??
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined);
-  return (configured ?? "http://localhost:3000").replace(/\/+$/, "");
+  return getAppOrigin();
 }
 
 /**

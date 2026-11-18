@@ -26,8 +26,9 @@ export type Row = Record<string, unknown>;
 export type DatabaseDriver = "sqlite" | "postgres";
 
 const configuredDriver = process.env.DATABASE_DRIVER?.trim().toLowerCase();
-export const databaseDriver: DatabaseDriver =
-  configuredDriver === "postgres" ? "postgres" : "sqlite";
+if (configuredDriver && configuredDriver !== "sqlite" && configuredDriver !== "postgres") {
+  throw new Error('DATABASE_DRIVER must be either "sqlite" or "postgres".');
+}
 
 const defaultDbPath = process.env.VERCEL
   ? "/tmp/campus-security.db"
@@ -36,6 +37,12 @@ const defaultDbPath = process.env.VERCEL
 const DB_PATH = resolve(process.env.DATABASE_FILE ?? defaultDbPath);
 const POSTGRES_URL =
   process.env.SUPABASE_DB_URL?.trim() || process.env.DATABASE_URL?.trim();
+export const databaseDriver: DatabaseDriver =
+  process.env.VERCEL ||
+  configuredDriver === "postgres" ||
+  (configuredDriver !== "sqlite" && Boolean(POSTGRES_URL))
+    ? "postgres"
+    : "sqlite";
 
 /**
  * Next.js re-evaluates server modules on every hot reload, which would open a

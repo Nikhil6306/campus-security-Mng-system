@@ -2,6 +2,7 @@ import "server-only";
 
 import { createHash, randomBytes } from "node:crypto";
 import type { AuthSession, Teacher, VisitRequest } from "@/lib/types";
+import { getAppOrigin } from "../app-origin";
 import { get, nextId, run, tx } from "../db";
 import type { Row } from "../db";
 import { badRequest, conflict, forbidden, notFound } from "../errors";
@@ -27,10 +28,7 @@ import { persistSecondaryToSupabase } from "../supabase-db";
 const now = () => new Date().toISOString();
 
 function appOrigin(): string {
-  const configured =
-    process.env.NEXT_PUBLIC_APP_URL ??
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined);
-  return (configured ?? "http://localhost:3000").replace(/\/+$/, "");
+  return getAppOrigin();
 }
 
 export function hashToken(token: string): string {

@@ -26,12 +26,10 @@ export async function POST(request: Request) {
     const { session, token } = await signIn(input.email, input.password);
 
     if (input.expectedRole) {
-      const allowed =
-        session.role === input.expectedRole ||
-        (input.expectedRole === "admin" && session.role === "super_admin");
+      const allowed = session.role === input.expectedRole;
       if (!allowed) {
         throw new AuthError(
-          `That account signs in as ${ROLE_LABELS[session.role]}. Use the matching portal.`,
+          "You are not authorized to access this login portal.",
           403,
         );
       }
@@ -45,6 +43,7 @@ export async function POST(request: Request) {
     });
 
     const store = await cookies();
+    const isSecure = isSecureRequest(request);
     store.set(SESSION_COOKIE, token, {
       httpOnly: true,
       sameSite: "lax",
@@ -53,7 +52,18 @@ export async function POST(request: Request) {
       // http://localhost would otherwise set a cookie the browser refuses to
       // send back, and no one could sign in. Behind a TLS-terminating proxy
       // the forwarded protocol is what counts.
-      secure: isSecureRequest(request),
+      secure: isSecure,
+      path: "/",
+      maxAge: 12 * 60 * 60,
+    });
+
+    // Set a lightweight role hint cookie readable by the Next.js middleware for
+    // role-based routing. This is NOT a security boundary — the actual role is
+    // always re-verified server-side in every API route via requireRole().
+    store.set("csms_role", session.role, {
+      httpOnly: false, // Must be readable by middleware (Edge runtime, no DB access)
+      sameSite: "lax",
+      secure: isSecure,
       path: "/",
       maxAge: 12 * 60 * 60,
     });

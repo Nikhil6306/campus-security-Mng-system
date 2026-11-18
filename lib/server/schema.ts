@@ -55,6 +55,20 @@ CREATE TABLE IF NOT EXISTS sessions (
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at);
 
+CREATE TABLE IF NOT EXISTS password_reset_otps (
+  id           TEXT PRIMARY KEY,
+  email        TEXT NOT NULL,
+  otp_hash     TEXT NOT NULL,
+  salt         TEXT NOT NULL,
+  attempts     INTEGER NOT NULL DEFAULT 0,
+  max_attempts INTEGER NOT NULL DEFAULT 5,
+  created_at   TEXT NOT NULL,
+  expires_at   TEXT NOT NULL,
+  used_at      TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_reset_otps_email ON password_reset_otps(email);
+CREATE INDEX IF NOT EXISTS idx_reset_otps_expiry ON password_reset_otps(expires_at);
+
 /* ---------------------------------------------------------------- *
  * Organisation
  * ---------------------------------------------------------------- */
