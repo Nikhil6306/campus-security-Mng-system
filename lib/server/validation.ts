@@ -463,8 +463,22 @@ export const forgotPasswordSchema = z.object({
   email: zEmail,
 });
 
+export const verifyOtpSchema = z.object({
+  email: zEmail,
+  otp: z.string().trim().min(4, "Verification code must be at least 4 characters.").max(12, "Verification code is too long."),
+});
+
+export const resendOtpSchema = z.object({
+  email: zEmail,
+});
+
 export const resetPasswordSchema = z.object({
-  password: z.string().min(8, "Password must be at least 8 characters long."),
+  password: z
+    .string()
+    .min(8, "Password must be at least 8 characters long.")
+    .refine((v) => /[A-Za-z]/.test(v) && /[0-9]/.test(v), "Password must contain both letters and numbers."),
+  email: zEmail.optional(),
+  otp: z.string().trim().min(4).max(12).optional(),
 });
 
 export const outingDecisionSchema = z.object({

@@ -1,102 +1,134 @@
 # Campus Security Management System (CSMS)
-## Master Enterprise System Architecture
+## System Architecture & End-to-End Communication Specification
 
-**Institution:** Dev Sanskriti Vishwavidyalaya (DSVV), Haridwar, Uttarakhand  
-**Document Version:** 2.0 (Enterprise Edition)  
-**Status:** Approved Architectural Baseline  
+**Institution:** Dev Sanskriti Vishwavidyalaya (DSVV), Haridwar  
+**System:** Campus Security Management System (CSMS)  
+**Document Version:** 2.0 (Updated November 2026)  
+**Primary Stack:** Next.js 15 (App Router), React 19, TypeScript 5.7, Tailwind CSS, Radix UI, Supabase Cloud (PostgreSQL 15+ & Storage), React Native 0.86 / Expo SDK 57
 
 ---
 
-### 1. High-Level System Architecture
+## 1. High-Level Architecture Overview
 
-The Campus Security Management System operates as a single integrated ecosystem connecting external visitors, university administrators, faculty hosts, and gate security personnel in real time.
+The Campus Security Management System digitizes and secures campus access across Dev Sanskriti Vishwavidyalaya. It unifies public visitor pre-booking, faculty WhatsApp/Email approvals, security guard handheld operations, student hostel outpasses, and real-time administrative oversight.
 
 ```mermaid
-graph TB
-    subgraph ClientTier ["Tier 1: Client Applications"]
-        WebPublic["Public Visitor Portal\n(Next.js 15 App Router - Responsive)"]
-        WebAdmin["Admin & Operations Console\n(Next.js 15 - 19 Management Modules)"]
-        StaffWeb["Faculty & Department Portal\n(Web-based Approval & Meetings)"]
-        MobileGuard["Campus Security Guard App\n(React Native / Expo SDK 57 - Android)"]
+graph TD
+    subgraph Clients["1. Client Layer"]
+        PublicUser["Public Visitor<br/>(Web Browser)"]
+        FacultyUser["Faculty Host<br/>(WhatsApp / Email / Web)"]
+        GuardMobile["Security Guard<br/>(Android Mobile App)"]
+        AdminUser["Administrator / Super Admin<br/>(Web Console)"]
     end
 
-    subgraph GatewayTier ["Tier 2: Edge & API Gateway (Vercel Global Edge)"]
-        EdgeRouter["Vercel Global Edge Network\n(Reverse Proxy, SSL, Compression)"]
-        SecFilter["Security Filter & Rate Limiter\n(CSRF, Origin Validation, Role Firewall)"]
-        AuthMiddleware["Session & Token Validator\n(httpOnly Cookie & Bearer JWT)"]
+    subgraph Server["2. Backend & Application Layer (Next.js 15)"]
+        EdgeMiddleware["Edge Middleware<br/>middleware.ts (RBAC Routing)"]
+        API["Route Handlers<br/>app/api/* (requireRole)"]
+        Services["Domain Services<br/>lib/server/services/*"]
+        Repo["Data Repository<br/>lib/server/repo.ts"]
     end
 
-    subgraph ServiceTier ["Tier 3: Enterprise Application Services (Next.js 15 Node.js Runtime)"]
-        VisitorService["Visitor Lifecycle & Pre-booking Engine"]
-        GateService["Gate Pass Verification & Check-In/Out"]
-        DutyService["Guard Shift Scheduling, Patrols & Handover"]
-        SOSService["Emergency Alert & Incident Dispatcher"]
-        FacultyService["Faculty WhatsApp Approvals & Tokens"]
-        SnapshotService["Role-Scoped Snapshot Synchronization"]
+    subgraph Data["3. Persistence & Cloud Infrastructure"]
+        SQLite[(".data/campus-security.db<br/>Edge SQLite Store (WAL)")]
+        SupabaseDB[("Supabase Cloud<br/>PostgreSQL 15+ with RLS")]
+        SupabaseStorage[("Supabase Storage<br/>Private 'campus-security' Bucket")]
     end
 
-    subgraph DataTier ["Tier 4: Enterprise Persistence & Storage"]
-        SupabasePG[("Supabase Cloud PostgreSQL 15\n(19 Migrations, Connection Pooler :6543)")]
-        SupabaseRealtime["Supabase Realtime\n(PostgreSQL CDC WebSocket Channels)"]
-        SupabaseStorage["Supabase Object Storage\n(Encrypted Private Bucket: campus-security)"]
-        LocalSQLite[("SQLite WAL Fallback\n(.data/campus-security.db - Node.js 24)")]
+    subgraph External["4. External Communications"]
+        MetaWhatsApp["Meta WhatsApp Business API<br/>Cloud Graph API v21.0"]
+        ResendEmail["Resend Email Service<br/>Transactional OTP & Delivery"]
     end
 
-    subgraph ExternalTier ["Tier 5: External Enterprise Integrations"]
-        MetaWhatsApp["Meta WhatsApp Business Cloud API\n(Automated Interactive Approvals)"]
-        ResendEmail["Resend Transactional Email Gateway\n(Passes, Alerts, Audit Confirmations)"]
-    end
+    PublicUser -->|HTTPS| EdgeMiddleware
+    FacultyUser -->|Approval Link| EdgeMiddleware
+    AdminUser -->|HTTPS| EdgeMiddleware
+    GuardMobile -->|REST API| API
 
-    WebPublic --> EdgeRouter
-    WebAdmin --> EdgeRouter
-    StaffWeb --> EdgeRouter
-    MobileGuard --> EdgeRouter
-
-    EdgeRouter --> SecFilter
-    SecFilter --> AuthMiddleware
-    AuthMiddleware --> ServiceTier
-
-    VisitorService --> SupabasePG
-    GateService --> SupabasePG
-    DutyService --> SupabasePG
-    SOSService --> SupabasePG
-    FacultyService --> SupabasePG
-    SnapshotService --> SupabasePG
-
-    GateService --> LocalSQLite
-    VisitorService --> LocalSQLite
-
-    VisitorService --> SupabaseStorage
-    FacultyService --> MetaWhatsApp
-    VisitorService --> ResendEmail
-    SupabasePG --> SupabaseRealtime
-
-    SupabaseRealtime -.-> WebAdmin
-    SupabaseRealtime -.-> MobileGuard
+    EdgeMiddleware --> API
+    API --> Services
+    Services --> Repo
+    Repo --> SQLite
+    Repo -.->|Dual-Write / Sync| SupabaseDB
+    Services -->|Webcam Photos| SupabaseStorage
+    Services -->|Notifications| MetaWhatsApp
+    Services -->|OTP / Passes| ResendEmail
 ```
 
 ---
 
-### 2. Tier Breakdown & Technology Stack
+## 2. End-to-End Communication Pipeline
 
-| Tier | Component | Technology / Framework | Function & Specifications |
-|---|---|---|---|
-| **Tier 1** | Public Web Portal | Next.js 15.2.0, React 19, Tailwind CSS | Multi-step visitor pre-booking, live camera capture, booking status lookup. |
-| **Tier 1** | Admin Operations Console | Next.js 15, Radix UI, Lucide, Recharts | Comprehensive monitoring, visitor approvals, guard rosters, gate logs, exports. |
-| **Tier 1** | Security Guard Mobile App | React Native 0.86.3, Expo 57, Expo Router | Hardware QR scanning, walk-in check-in, check-out, live stats, emergency SOS. |
-| **Tier 2** | Edge & API Gateway | Vercel Edge Runtime & Node.js Serverless | Route distribution, SSL termination, HTTP-only cookie exchange, CORS enforcement. |
-| **Tier 3** | Application Business Logic | TypeScript 5.7, Zod 4.6.1 | Transactional state machines, cryptographic token hashing, IST slot calculations. |
-| **Tier 4** | Primary Database | Supabase PostgreSQL 15, Supavisor Pooler | ACID relational database, 19 migrations, Row Level Security (RLS). |
-| **Tier 4** | Local Edge Storage | Node.js 24 Native SQLite (`DatabaseSync`) | High-concurrency local WAL engine for zero-network edge fallback. |
-| **Tier 4** | Object Storage | Supabase Storage (`campus-security` bucket) | Staff-only private bucket for visitor facial photos and incident evidence. |
-| **Tier 5** | Messaging & Alerts | Meta WhatsApp Cloud API, Resend | Bi-directional interactive faculty approvals and visitor pass distribution. |
+The system establishes a clean, synchronous and real-time communication pipeline connecting the public web portal, backend API, Supabase cloud database, and the guard mobile application:
+
+```
+[Public Visitor / Web]
+         │
+         ▼  (1) Submits 4-section booking form & live facial photo
+[Next.js Server API: /api/public/bookings]
+         │
+         ├─► (2) Uploads photo to Supabase Storage ('campus-security' bucket)
+         ├─► (3) Commits pending record to Supabase PostgreSQL & SQLite store
+         └─► (4) Dispatches WhatsApp message with single-use approval token
+         │
+         ▼
+[Faculty Host WhatsApp / Email]
+         │
+         ▼  (5) Clicks "Approve" (Consumes cryptographic token)
+[Next.js Server API: /api/faculty/decision]
+         │
+         ├─► (6) Updates status to APPROVED
+         ├─► (7) Generates 32-char crypto random pass_token
+         └─► (8) Issues digital QR pass to visitor
+         │
+         ▼
+[Supabase Database (PostgreSQL 15)]
+         │
+         ▼  (9) Realtime replication / API query
+[Guard Mobile Application (com.dsvv.campussecurity)]
+         │
+         ▼ (10) Guard scans QR pass at Main Gate (/api/gate/verify)
+[Next.js Gate Engine: /api/gate/check-in]
+         │
+         ├─► (11) Validates pass status, date, and displays photo
+         ├─► (12) Commits check_in_time & changes status to CHECKED_IN
+         └─► (13) Emits audit log to check_logs
+         │
+         ▼
+[Admin Dashboard Live Monitor (/admin/dashboard)]
+```
 
 ---
 
-### 3. Core Enterprise Design Principles
+## 3. Core Architectural Subsystems
 
-1. **Strict Zero-Trust QR Verification:** QR codes encode opaque identifiers or cryptographically generated SHA-256 nonces. No Personally Identifiable Information (PII) is stored in QR payloads. All gate clearance decisions are calculated dynamically by the server.
-2. **Unified Data Model with Dual-Driver Adapter:** The application employs a unified database abstraction (`lib/server/db.ts`). When deployed on Vercel or when `DATABASE_DRIVER=postgres` is set, queries route through pooled PostgreSQL. Local development and offline desks use native Node.js SQLite with identical schemas.
-3. **Role-Scoped Server Snapshots:** The system replaces fragmented micro-queries with centralized role-scoped snapshots (`lib/server/services/snapshot.ts`). Security guards only receive data relevant to their assigned gate, faculty see only their meetings, and visitors cannot view others' records.
-4. **Idempotent Mutation Pipeline:** Every gate operation (check-in, check-out, walk-in booking) enforces idempotency keys and state-machine transitions to prevent race conditions or duplicate check-ins.
-5. **Campus-Local (IST) Time Horizon:** All time slots, gate opening/closing hours, and duty shifts are calculated in Asia/Kolkata (+05:30) timezone, preventing UTC date-boundary bugs.
+### 3.1 Public Visitor Pre-Booking Subsystem
+* Streamlined 4-section wizard with no extraneous scheduling questionnaires.
+* Dynamic category selection: selecting `Visitor` automatically hides and clears the faculty host selection, allowing general university visits without mandatory host linkage.
+* Dedicated headcount counter (`Number of Additional People`) with default `0`.
+* Live client-side camera capture of visitor facial photo.
+* Zero PII exposure in public QR payloads (stores only opaque tokens).
+
+### 3.2 Gate Security & Mobile Verification Subsystem
+* Dedicated native Android application in `mobile/` (`com.dsvv.campussecurity`).
+* Camera-based QR code decoding via `expo-camera`.
+* Gate In/Out state machine enforcing atomic check-in and check-out.
+* Strict duplicate entry prevention: re-scanning an already active pass triggers a prominent rejection.
+* Offline resilience backed by the local SQLite database running in Write-Ahead Logging (WAL) mode.
+
+### 3.3 Role-Based Security & Authorization Subsystem
+* Dedicated login routes: `/super-admin/login`, `/admin/login`, `/security/login`, `/teacher`, `/login`.
+* Server-side `requireRole()` checks on every sensitive Route Handler.
+* Edge middleware path evaluation using `PREFIX_ALLOWED_ROLES`.
+* HTTP-only session cookies (`csms_session`) with 12-hour server expiration.
+* Rate-limited 3-step OTP password recovery flow with scrypt hashing.
+
+### 3.4 Guard Duty, Shifts & Patrols Subsystem
+* Real-time gate staffing requirement evaluations.
+* Guard shift start/end sessions with shift handover reporting.
+* Handover checklists for physical gate equipment (Radios, Keys, Metal Detectors).
+* Perimeter patrol tracking with GPS coordinates and mandatory checkpoint photos.
+
+### 3.5 Student Hostel Outpass Subsystem
+* Digital gate passes for hostel students.
+* Warden review and digital approval workflow.
+* Gate guard verification scan tracking student exit and entry times.

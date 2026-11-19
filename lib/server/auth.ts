@@ -269,40 +269,75 @@ export async function signUp(
 }
 
 /**
- * Sends a password reset email via Supabase Auth.
+ * Sends a password reset email and OTP verification code.
  */
-export async function requestPasswordReset(email: string, redirectTo?: string): Promise<{ ok: boolean; message: string }> {
-  const cleanEmail = email.trim().toLowerCase();
-
-  if (isSupabaseConfigured()) {
-    const sb = getSupabaseServerClient();
-    const { error } = await sb.auth.resetPasswordForEmail(cleanEmail, {
-      redirectTo: redirectTo || `${getAppOrigin()}/reset-password`,
-    });
-
-    if (error) {
-      throw new AuthError(error.message, 400);
-    }
-
-    return { ok: true, message: "Password reset link sent to your email." };
-  }
-
-  return { ok: true, message: "Password reset link sent to your email." };
+export async function requestPasswordReset(
+  email: string,
+  _redirectTo?: string,
+): Promise<{ ok: boolean; message: string }> {
+  const { createPasswordResetOtp } = await import("./services/otp");
+  return createPasswordResetOtp(email);
 }
 
 /**
- * Updates user password with Supabase Auth.
+ * Updates user password with Supabase Auth or local SQLite session.
  */
-export async function resetPassword(token: string, newPassword: string): Promise<{ ok: boolean; message: string }> {
-  if (isSupabaseConfigured()) {
-    const sb = getSupabaseServerClient(token);
-    const { error } = await sb.auth.updateUser({ password: newPassword });
+export async function resetPassword(
+  token: string,
+  newPassword: string,
+): Promise<{ ok: boolean; message: string }> {
+  let updated = false;
 
-    if (error) {
-      throw new AuthError(error.message, 400);
+  if (isSupabaseConfigured()) {
+    try {
+      const sb = getSupabaseServerClient(token);
+      const { error } = await sb.auth.updateUser({ password: newPassword });
+
+      if (!error) {
+        updated = true;
+      } else {
+        // If token might be an admin/recovery session, try getting user and updating
+        const admin = getSupabaseAdminClient();
+        const { data: { user }, error: userErr } = await sb.auth.getUser(token);
+        if (!userErr && user) {
+          const { error: adminUpdateErr } = await admin.auth.admin.updateUserById(user.id, {
+            password: newPassword,
+          });
+          if (!adminUpdateErr) updated = true;
+        }
+      }
+    } catch {
+      // Fall through to SQLite session check
+    }
+  }
+
+  // SQLite session check fallback
+  const sessionRow = get<{ user_id: string; expires_at: string }>(
+    "SELECT user_id, expires_at FROM sessions WHERE id = ?",
+    [token],
+  );
+
+  if (sessionRow) {
+    if (new Date(sessionRow.expires_at).getTime() <= Date.now()) {
+      run("DELETE FROM sessions WHERE id = ?", [token]);
+      throw new AuthError("Session expired or invalid reset link. Please request a new one.", 401);
     }
 
-    return { ok: true, message: "Password updated successfully." };
+    const { hash, salt } = hashPassword(newPassword);
+    const now = new Date().toISOString();
+    tx(() => {
+      run(
+        "UPDATE app_users SET password_hash = ?, password_salt = ?, updated_at = ? WHERE id = ?",
+        [hash, salt, now, sessionRow.user_id],
+      );
+      // Invalidate the reset session and all prior sessions for security
+      run("DELETE FROM sessions WHERE user_id = ?", [sessionRow.user_id]);
+    });
+    updated = true;
+  }
+
+  if (!updated) {
+    throw new AuthError("Session expired or invalid reset link. Please request a new one.", 401);
   }
 
   return { ok: true, message: "Password updated successfully." };

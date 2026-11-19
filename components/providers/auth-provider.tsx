@@ -22,7 +22,11 @@ interface AuthContextValue {
   signIn: (email: string, password: string, expectedRole?: Role) => Promise<AuthSession>;
   signUp: (payload: { email: string; password: string; fullName: string; role?: Role; phone?: string }) => Promise<AuthSession | null>;
   forgotPassword: (email: string) => Promise<{ ok: boolean; message: string }>;
-  resetPassword: (password: string, token?: string) => Promise<{ ok: boolean; message: string }>;
+  /** Verifies a 6-digit OTP sent during the forgot-password flow. */
+  verifyOtp: (email: string, otp: string) => Promise<{ ok: boolean; data: { recoveryToken?: string }; message: string }>;
+  /** Resends the OTP (60-second cooldown enforced server-side). */
+  resendOtp: (email: string) => Promise<{ ok: boolean; message: string }>;
+  resetPassword: (password: string, token?: string, email?: string, otp?: string) => Promise<{ ok: boolean; message: string }>;
   signOut: () => Promise<void>;
   /** Convenience predicates for navigation and empty states. */
   isAdmin: boolean;
@@ -33,7 +37,7 @@ interface AuthContextValue {
 }
 
 export function useAuth(): AuthContextValue {
-  const { ready, session, signIn, signUp, forgotPassword, resetPassword, signOut } = useApp();
+  const { ready, session, signIn, signUp, forgotPassword, verifyOtp, resendOtp, resetPassword, signOut } = useApp();
   return React.useMemo(
     () => ({
       ready,
@@ -41,6 +45,8 @@ export function useAuth(): AuthContextValue {
       signIn,
       signUp,
       forgotPassword,
+      verifyOtp,
+      resendOtp,
       resetPassword,
       signOut,
       isAdmin: isAdminRole(session?.role),
@@ -49,7 +55,7 @@ export function useAuth(): AuthContextValue {
       isStudent: session?.role === "student",
       isVisitor: session?.role === "visitor",
     }),
-    [ready, session, signIn, signUp, forgotPassword, resetPassword, signOut],
+    [ready, session, signIn, signUp, forgotPassword, verifyOtp, resendOtp, resetPassword, signOut],
   );
 }
 

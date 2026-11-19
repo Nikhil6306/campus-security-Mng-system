@@ -492,8 +492,12 @@ export const api = {
     post<AuthSession | null>("/api/auth/signup", payload),
   forgotPassword: (email: string) =>
     post<{ ok: boolean; message: string }>("/api/auth/forgot-password", { email }),
-  resetPassword: (password: string, token?: string) =>
-    post<{ ok: boolean; message: string }>("/api/auth/reset-password", { password }, {
+  verifyOtp: (email: string, otp: string) =>
+    post<{ ok: boolean; data: { recoveryToken?: string }; message: string }>("/api/auth/verify-otp", { email, otp }),
+  resendOtp: (email: string) =>
+    post<{ ok: boolean; message: string }>("/api/auth/resend-otp", { email }),
+  resetPassword: (password: string, token?: string, email?: string, otp?: string) =>
+    post<{ ok: boolean; message: string }>("/api/auth/reset-password", { password, email, otp }, {
       headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     }),
   signOut: () => post<null>("/api/auth/logout"),
