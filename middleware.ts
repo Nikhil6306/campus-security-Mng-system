@@ -34,6 +34,16 @@ const PREFIX_ALLOWED_ROLES: Record<string, Role[]> = {
   "/teacher": ["teacher", "admin", "super_admin"],
 };
 
+/** Dedicated login URL for each role. */
+const ROLE_LOGIN: Record<Role, string> = {
+  super_admin: "/super-admin/login",
+  admin: "/admin/login",
+  security: "/security/login",
+  teacher: "/teacher",
+  student: "/login",
+  visitor: "/login",
+};
+
 /** Login URL for each protected prefix. */
 const PREFIX_LOGIN: Record<string, string> = {
   "/super-admin": "/super-admin/login",
@@ -47,9 +57,13 @@ export function middleware(request: NextRequest) {
   const token = request.cookies.get(SESSION_COOKIE)?.value;
   const role = (request.cookies.get(ROLE_COOKIE)?.value ?? "") as Role | "";
 
+  // ------------------------------------------------------------------ //
+  // Generic /login page handling:
   // If user is already authenticated and visits generic /login, send to their dashboard
+  // ------------------------------------------------------------------ //
   if (pathname === "/login") {
-    if (token && role && ROLE_HOME[role as Role]) {
+    const nextParam = request.nextUrl.searchParams.get("next");
+    if (!nextParam && token && role && ROLE_HOME[role as Role]) {
       const home = ROLE_HOME[role as Role];
       return NextResponse.redirect(new URL(home, request.url));
     }
@@ -70,14 +84,23 @@ export function middleware(request: NextRequest) {
 
   // ------------------------------------------------------------------ //
   // Special handling for login pages:
-  // If already authenticated, redirect to the user's role dashboard.
-  // If unauthenticated, allow access to the login page.
   // ------------------------------------------------------------------ //
-  const isLoginPage = pathname === loginPath || pathname === "/login";
+  const isLoginPage = pathname === loginPath;
   if (isLoginPage) {
+    // 1. If 'next' query parameter is present, the user was redirected here to authenticate.
+    // Never redirect away from login when 'next' is present to prevent infinite loops.
+    const nextParam = request.nextUrl.searchParams.get("next");
+    if (nextParam) {
+      return NextResponse.next();
+    }
+
+    // 2. If authenticated and accessing a DIFFERENT portal's login page,
+    // redirect them to their own permitted home dashboard.
+    // (e.g., Admin visiting /super-admin/login -> /admin/dashboard)
     if (token && role && ROLE_HOME[role as Role]) {
-      const home = ROLE_HOME[role as Role];
-      if (home && home !== pathname) {
+      const userLoginPath = ROLE_LOGIN[role as Role];
+      if (userLoginPath && userLoginPath !== pathname) {
+        const home = ROLE_HOME[role as Role];
         return NextResponse.redirect(new URL(home, request.url));
       }
     }

@@ -67,7 +67,15 @@ export function SuperAdminShell({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     if (!ready || isPublicRoute) return;
     if (!session) {
-      router.replace(`/super-admin/login?next=${encodeURIComponent(pathname)}`);
+      if (typeof document !== "undefined") {
+        document.cookie = "csms_role=; path=/; max-age=0;";
+      }
+      const target = `/super-admin/login?next=${encodeURIComponent(pathname)}`;
+      if (typeof window !== "undefined") {
+        window.location.replace(target);
+      } else {
+        router.replace(target);
+      }
     }
   }, [ready, session, isPublicRoute, pathname, router]);
 
@@ -84,8 +92,17 @@ export function SuperAdminShell({ children }: { children: React.ReactNode }) {
   // Not signed in
   if (!session) {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-navy text-white">
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-3 bg-navy p-4 text-white">
         <InlineLoader label="Redirecting to Super Admin login…" />
+        <p className="text-xs text-white/70">
+          If you are not redirected automatically,{" "}
+          <a
+            href={`/super-admin/login?next=${encodeURIComponent(pathname)}`}
+            className="font-medium text-amber-300 underline underline-offset-4 hover:text-amber-200"
+          >
+            click here to log in
+          </a>.
+        </p>
       </div>
     );
   }

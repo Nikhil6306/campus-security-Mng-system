@@ -47,7 +47,15 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     if (!ready || isPublicRoute) return;
     if (!session) {
-      router.replace(`/admin/login?next=${encodeURIComponent(pathname)}`);
+      if (typeof document !== "undefined") {
+        document.cookie = "csms_role=; path=/; max-age=0;";
+      }
+      const target = `/admin/login?next=${encodeURIComponent(pathname)}`;
+      if (typeof window !== "undefined") {
+        window.location.replace(target);
+      } else {
+        router.replace(target);
+      }
     } else if (!permitted) {
       router.replace(HOME_FOR_ROLE[session.role] ?? "/");
     }
@@ -66,8 +74,17 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   // Not signed in
   if (!session) {
     return (
-      <div className="flex min-h-dvh items-center justify-center">
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-3 bg-muted/20 p-4">
         <InlineLoader label="Redirecting to Admin login…" />
+        <p className="text-xs text-muted-foreground">
+          If you are not redirected automatically,{" "}
+          <a
+            href={`/admin/login?next=${encodeURIComponent(pathname)}`}
+            className="font-medium text-primary underline underline-offset-4 hover:text-primary/80"
+          >
+            click here to log in
+          </a>.
+        </p>
       </div>
     );
   }
