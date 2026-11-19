@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 
 import { AuthError, SESSION_COOKIE, resetPassword } from "@/lib/server/auth";
 import { bootstrap, readBody } from "@/lib/server/http";
+import { verifyPasswordResetOtp } from "@/lib/server/services/otp";
 import { parse, resetPasswordSchema } from "@/lib/server/validation";
 
 export const runtime = "nodejs";
@@ -19,6 +20,12 @@ export async function POST(request: Request) {
     if (!token) {
       const store = await cookies();
       token = store.get(SESSION_COOKIE)?.value;
+    }
+
+    // If no token in header/cookie, check if email + otp were provided in body
+    if (!token && input.email && input.otp) {
+      const verification = await verifyPasswordResetOtp(input.email, input.otp);
+      token = verification.recoveryToken;
     }
 
     if (!token) {

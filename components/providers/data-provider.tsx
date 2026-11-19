@@ -63,7 +63,9 @@ interface AppContextValue {
   signIn: (email: string, password: string, expectedRole?: Role) => Promise<AuthSession>;
   signUp: (payload: { email: string; password: string; fullName: string; role?: Role; phone?: string }) => Promise<AuthSession | null>;
   forgotPassword: (email: string) => Promise<{ ok: boolean; message: string }>;
-  resetPassword: (password: string, token?: string) => Promise<{ ok: boolean; message: string }>;
+  verifyOtp: (email: string, otp: string) => Promise<{ ok: boolean; data: { recoveryToken?: string }; message: string }>;
+  resendOtp: (email: string) => Promise<{ ok: boolean; message: string }>;
+  resetPassword: (password: string, token?: string, email?: string, otp?: string) => Promise<{ ok: boolean; message: string }>;
   signOut: () => Promise<void>;
   /** Runs a mutation, surfaces a friendly error and keeps the snapshot in step. */
   run: <T>(operation: () => Promise<T>) => Promise<T>;
@@ -178,8 +180,16 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     return api.forgotPassword(email);
   }, []);
 
-  const resetPassword = React.useCallback(async (password: string, token?: string) => {
-    return api.resetPassword(password, token);
+  const verifyOtp = React.useCallback(async (email: string, otp: string) => {
+    return api.verifyOtp(email, otp);
+  }, []);
+
+  const resendOtp = React.useCallback(async (email: string) => {
+    return api.resendOtp(email);
+  }, []);
+
+  const resetPassword = React.useCallback(async (password: string, token?: string, email?: string, otp?: string) => {
+    return api.resetPassword(password, token, email, otp);
   }, []);
 
   const signOut = React.useCallback(async () => {
@@ -205,8 +215,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   );
 
   const value = React.useMemo<AppContextValue>(
-    () => ({ ready, db, session, live, refresh, signIn, signUp, forgotPassword, resetPassword, signOut, run }),
-    [ready, db, session, live, refresh, signIn, signUp, forgotPassword, resetPassword, signOut, run],
+    () => ({ ready, db, session, live, refresh, signIn, signUp, forgotPassword, verifyOtp, resendOtp, resetPassword, signOut, run }),
+    [ready, db, session, live, refresh, signIn, signUp, forgotPassword, verifyOtp, resendOtp, resetPassword, signOut, run],
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
