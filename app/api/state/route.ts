@@ -1,7 +1,8 @@
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
 import { bootstrap } from "@/lib/server/http";
-import { currentSession } from "@/lib/server/auth";
+import { currentSession, SESSION_COOKIE } from "@/lib/server/auth";
 import { buildSnapshot } from "@/lib/server/services/snapshot";
 
 export const runtime = "nodejs";
@@ -17,6 +18,23 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   bootstrap();
   const session = await currentSession();
+
+  // If no valid session but a stale session cookie was sent, clear it immediately
+  // to prevent client-side redirect loops in middleware and shells.
+  if (!session) {
+    try {
+      const store = await cookies();
+      if (store.has(SESSION_COOKIE)) {
+        store.delete(SESSION_COOKIE);
+      }
+      if (store.has("csms_role")) {
+        store.delete("csms_role");
+      }
+    } catch {
+      // ignore if cookies cannot be modified in context
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     data: { session, state: buildSnapshot(session) },

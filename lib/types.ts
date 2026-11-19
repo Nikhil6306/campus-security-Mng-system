@@ -762,8 +762,8 @@ export type Role = "super_admin" | "admin" | "security" | "teacher" | "student" 
 export const ROLES: Role[] = ["super_admin", "admin", "security", "teacher", "student", "visitor"];
 
 export const ROLE_LABELS: Record<Role, string> = {
-  super_admin: "Super Administrator",
-  admin: "Administrator",
+  super_admin: "Administrator",
+  admin: "Admin",
   security: "Security Guard",
   teacher: "Teacher / Staff",
   student: "Student",
@@ -772,7 +772,7 @@ export const ROLE_LABELS: Record<Role, string> = {
 
 /** Landing route after sign-in, per role. */
 export const ROLE_HOME: Record<Role, string> = {
-  super_admin: "/super-admin/dashboard",
+  super_admin: "/administrator/dashboard",
   admin: "/admin/dashboard",
   security: "/security/dashboard",
   teacher: "/teacher/dashboard",

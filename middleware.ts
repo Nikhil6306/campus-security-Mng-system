@@ -18,7 +18,7 @@ type Role = "super_admin" | "admin" | "security" | "teacher" | "student" | "visi
 
 /** Dashboard home for each role, used to redirect authenticated users. */
 const ROLE_HOME: Record<Role, string> = {
-  super_admin: "/super-admin/dashboard",
+  super_admin: "/administrator/dashboard",
   admin: "/admin/dashboard",
   security: "/security/dashboard",
   teacher: "/teacher/dashboard",
@@ -28,15 +28,17 @@ const ROLE_HOME: Record<Role, string> = {
 
 /** Roles allowed to access each protected prefix (excluding the login page itself). */
 const PREFIX_ALLOWED_ROLES: Record<string, Role[]> = {
+  "/administrator": ["super_admin"],
   "/super-admin": ["super_admin"],
   "/admin": ["admin", "super_admin"],
   "/security": ["security", "admin", "super_admin"],
+  "/guard": ["security", "admin", "super_admin"],
   "/teacher": ["teacher", "admin", "super_admin"],
 };
 
 /** Dedicated login URL for each role. */
 const ROLE_LOGIN: Record<Role, string> = {
-  super_admin: "/super-admin/login",
+  super_admin: "/administrator/login",
   admin: "/admin/login",
   security: "/security/login",
   teacher: "/teacher",
@@ -46,9 +48,11 @@ const ROLE_LOGIN: Record<Role, string> = {
 
 /** Login URL for each protected prefix. */
 const PREFIX_LOGIN: Record<string, string> = {
-  "/super-admin": "/super-admin/login",
+  "/administrator": "/administrator/login",
+  "/super-admin": "/administrator/login",
   "/admin": "/admin/login",
   "/security": "/security/login",
+  "/guard": "/security/login",
   "/teacher": "/teacher",
 };
 
@@ -68,6 +72,22 @@ export function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL(home, request.url));
     }
     return NextResponse.next();
+  }
+
+  // ------------------------------------------------------------------ //
+  // Legacy /super-admin and /guard route redirects
+  // ------------------------------------------------------------------ //
+  if (pathname === "/super-admin" || pathname === "/super-admin/dashboard") {
+    return NextResponse.redirect(new URL("/administrator/dashboard", request.url));
+  }
+  if (pathname === "/super-admin/login") {
+    return NextResponse.redirect(new URL("/administrator/login", request.url));
+  }
+  if (pathname === "/guard" || pathname === "/guard/dashboard") {
+    return NextResponse.redirect(new URL("/security/dashboard", request.url));
+  }
+  if (pathname === "/guard/login") {
+    return NextResponse.redirect(new URL("/security/login", request.url));
   }
 
   // ------------------------------------------------------------------ //
@@ -96,7 +116,7 @@ export function middleware(request: NextRequest) {
 
     // 2. If authenticated and accessing a DIFFERENT portal's login page,
     // redirect them to their own permitted home dashboard.
-    // (e.g., Admin visiting /super-admin/login -> /admin/dashboard)
+    // (e.g., Admin visiting /administrator/login -> /admin/dashboard)
     if (token && role && ROLE_HOME[role as Role]) {
       const userLoginPath = ROLE_LOGIN[role as Role];
       if (userLoginPath && userLoginPath !== pathname) {
@@ -129,9 +149,11 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
+    "/administrator/:path*",
     "/super-admin/:path*",
     "/admin/:path*",
     "/security/:path*",
+    "/guard/:path*",
     "/teacher/:path*",
     "/login",
   ],

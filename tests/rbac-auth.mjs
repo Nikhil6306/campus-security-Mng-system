@@ -2,13 +2,14 @@
  * Automated Verification Suite for Strict Role-Based Authentication & Dashboard Routing
  *
  * Scenarios verified:
- * 1. Super Admin logs in via /super-admin/login -> redirects to /super-admin/dashboard
+ * 1. Administrator (super_admin) logs in via /administrator/login -> redirects to /administrator/dashboard
  * 2. Admin logs in via /admin/login -> redirects to /admin/dashboard
  * 3. Security Guard logs in via /security/login -> redirects to /security/dashboard
- * 4. Admin attempts to log in via /super-admin/login -> access denied (403)
- * 5. Security Guard attempts to access /admin/dashboard or /super-admin/dashboard -> denied/redirected
+ * 4. Admin attempts to log in via /administrator/login -> access denied (403)
+ * 5. Security Guard attempts to access /admin/dashboard or /administrator/dashboard -> denied/redirected
  * 6. Unauthenticated access to any protected dashboard -> redirected to appropriate login page
  * 7. Logout successfully invalidates session and prevents protected dashboard access
+ * 8. Legacy aliases (/super-admin -> /administrator, /guard -> /security)
  */
 
 import assert from "node:assert/strict";
@@ -37,7 +38,7 @@ function section(title) {
 
 // System configuration models
 const ROLE_HOME = {
-  super_admin: "/super-admin/dashboard",
+  super_admin: "/administrator/dashboard",
   admin: "/admin/dashboard",
   security: "/security/dashboard",
   teacher: "/teacher/dashboard",
@@ -46,7 +47,7 @@ const ROLE_HOME = {
 };
 
 const LOGIN_PORTALS = {
-  super_admin: "/super-admin/login",
+  super_admin: "/administrator/login",
   admin: "/admin/login",
   security: "/security/login",
 };
@@ -72,30 +73,30 @@ function validateLoginPortal(userRole, expectedRole) {
   return true;
 }
 
-// Simulates the routing/protection logic in SuperAdminShell, AdminShell, and SecurityShell
+// Simulates the routing/protection logic in AdministratorShell, SuperAdminShell, AdminShell, and SecurityShell
 function resolveDashboardNavigation(session, targetPath) {
   if (!session) {
-    if (targetPath.startsWith("/super-admin")) {
-      return { action: "redirect", target: `/super-admin/login?next=${encodeURIComponent(targetPath)}` };
+    if (targetPath.startsWith("/administrator") || targetPath.startsWith("/super-admin")) {
+      return { action: "redirect", target: `/administrator/login?next=${encodeURIComponent(targetPath)}` };
     }
     if (targetPath.startsWith("/admin")) {
       return { action: "redirect", target: `/admin/login?next=${encodeURIComponent(targetPath)}` };
     }
-    if (targetPath.startsWith("/security")) {
+    if (targetPath.startsWith("/security") || targetPath.startsWith("/guard")) {
       return { action: "redirect", target: `/security/login?next=${encodeURIComponent(targetPath)}` };
     }
     return { action: "redirect", target: "/login" };
   }
 
-  // Target: /super-admin/*
-  if (targetPath.startsWith("/super-admin")) {
+  // Target: /administrator/* or legacy /super-admin/*
+  if (targetPath.startsWith("/administrator") || targetPath.startsWith("/super-admin")) {
     if (session.role === "super_admin") {
       return { action: "render", allowed: true };
     }
     return {
       action: "deny_403",
       allowed: false,
-      message: "Access Denied — Super Administrator clearance required.",
+      message: "Access Denied — Administrator clearance required.",
       permittedHome: ROLE_HOME[session.role],
     };
   }
@@ -113,8 +114,8 @@ function resolveDashboardNavigation(session, targetPath) {
     };
   }
 
-  // Target: /security/*
-  if (targetPath.startsWith("/security")) {
+  // Target: /security/* or legacy /guard/*
+  if (targetPath.startsWith("/security") || targetPath.startsWith("/guard")) {
     const allowed = session.role === "security" || ADMIN_ROLES.includes(session.role);
     if (allowed) {
       return { action: "render", allowed: true };
@@ -162,11 +163,11 @@ class MockSessionStore {
 // RUN SCENARIO VERIFICATION TESTS
 // ==========================================
 
-section("Scenario 1: Super Admin Login & Redirection");
-test("Super Admin authenticates via /super-admin/login (expectedRole: super_admin)", () => {
+section("Scenario 1: Administrator (Super Admin) Login & Redirection");
+test("Administrator authenticates via /administrator/login (expectedRole: super_admin)", () => {
   assert.equal(validateLoginPortal("super_admin", "super_admin"), true);
   const destination = ROLE_HOME["super_admin"];
-  assert.equal(destination, "/super-admin/dashboard");
+  assert.equal(destination, "/administrator/dashboard");
 });
 
 section("Scenario 2: Admin Login & Redirection");
@@ -184,7 +185,7 @@ test("Security Guard authenticates via /security/login (expectedRole: security)"
 });
 
 section("Scenario 4: Cross-Role Login Portal Denials");
-test("Admin attempting to log in via /super-admin/login is rejected with HTTP 403", () => {
+test("Admin attempting to log in via /administrator/login is rejected with HTTP 403", () => {
   assert.throws(
     () => validateLoginPortal("admin", "super_admin"),
     (err) => {
@@ -195,7 +196,7 @@ test("Admin attempting to log in via /super-admin/login is rejected with HTTP 40
   );
 });
 
-test("Security Guard attempting to log in via /super-admin/login is rejected with HTTP 403", () => {
+test("Security Guard attempting to log in via /administrator/login is rejected with HTTP 403", () => {
   assert.throws(
     () => validateLoginPortal("security", "super_admin"),
     (err) => {
@@ -228,7 +229,7 @@ test("Admin attempting to log in via /security/login is rejected with HTTP 403",
   );
 });
 
-test("Super Admin attempting to log in via /admin/login is rejected with HTTP 403", () => {
+test("Administrator attempting to log in via /admin/login is rejected with HTTP 403", () => {
   assert.throws(
     () => validateLoginPortal("super_admin", "admin"),
     (err) => {
@@ -239,7 +240,7 @@ test("Super Admin attempting to log in via /admin/login is rejected with HTTP 40
   );
 });
 
-test("Super Admin attempting to log in via /security/login is rejected with HTTP 403", () => {
+test("Administrator attempting to log in via /security/login is rejected with HTTP 403", () => {
   assert.throws(
     () => validateLoginPortal("super_admin", "security"),
     (err) => {
@@ -258,9 +259,9 @@ function resolveLoginAccess(session, loginPath) {
   return { action: "render", allowed: true };
 }
 
-test("Logged-in Admin accessing /super-admin/login is redirected to /admin/dashboard", () => {
+test("Logged-in Admin accessing /administrator/login is redirected to /admin/dashboard", () => {
   const session = { userId: "a-1", role: "admin" };
-  const res = resolveLoginAccess(session, "/super-admin/login");
+  const res = resolveLoginAccess(session, "/administrator/login");
   assert.equal(res.action, "redirect");
   assert.equal(res.target, "/admin/dashboard");
 });
@@ -272,24 +273,27 @@ test("Logged-in Security Guard accessing /admin/login is redirected to /security
   assert.equal(res.target, "/security/dashboard");
 });
 
-test("Logged-in Super Admin accessing /login is redirected to /super-admin/dashboard", () => {
+test("Logged-in Administrator accessing /login is redirected to /administrator/dashboard", () => {
   const session = { userId: "sa-1", role: "super_admin" };
   const res = resolveLoginAccess(session, "/login");
   assert.equal(res.action, "redirect");
-  assert.equal(res.target, "/super-admin/dashboard");
+  assert.equal(res.target, "/administrator/dashboard");
 });
 
 section("Scenario 4c: Safe 'next' Parameter Redirection (Preventing cross-role leaks)");
 function getSafeRedirectUrl(target, role) {
   if (!target) return ROLE_HOME[role];
-  if (target.startsWith("/super-admin") && role !== "super_admin") {
+  if (
+    (target.startsWith("/administrator") || target.startsWith("/super-admin")) &&
+    role !== "super_admin"
+  ) {
     return ROLE_HOME[role];
   }
   if (target.startsWith("/admin") && role !== "admin" && role !== "super_admin") {
     return ROLE_HOME[role];
   }
   if (
-    target.startsWith("/security") &&
+    (target.startsWith("/security") || target.startsWith("/guard")) &&
     role !== "security" &&
     role !== "admin" &&
     role !== "super_admin"
@@ -299,8 +303,8 @@ function getSafeRedirectUrl(target, role) {
   return target;
 }
 
-test("Admin with next=/super-admin/dashboard is safely redirected to /admin/dashboard", () => {
-  const safe = getSafeRedirectUrl("/super-admin/dashboard", "admin");
+test("Admin with next=/administrator/dashboard is safely redirected to /admin/dashboard", () => {
+  const safe = getSafeRedirectUrl("/administrator/dashboard", "admin");
   assert.equal(safe, "/admin/dashboard");
 });
 
@@ -309,7 +313,7 @@ test("Security guard with next=/admin/settings is safely redirected to /security
   assert.equal(safe, "/security/dashboard");
 });
 
-test("Super Admin with next=/admin/activity retains legitimate permitted route", () => {
+test("Administrator with next=/admin/activity retains legitimate permitted route", () => {
   const safe = getSafeRedirectUrl("/admin/activity", "super_admin");
   assert.equal(safe, "/admin/activity");
 });
@@ -323,30 +327,30 @@ test("Security Guard navigating to /admin/dashboard is redirected to /security/d
   assert.equal(res.target, "/security/dashboard");
 });
 
-test("Security Guard navigating to /super-admin/dashboard is denied with 403 and permitted home link", () => {
+test("Security Guard navigating to /administrator/dashboard is denied with 403", () => {
   const guardSession = { userId: "g-1", role: "security" };
-  const res = resolveDashboardNavigation(guardSession, "/super-admin/dashboard");
+  const res = resolveDashboardNavigation(guardSession, "/administrator/dashboard");
   assert.equal(res.action, "deny_403");
   assert.equal(res.allowed, false);
   assert.equal(res.permittedHome, "/security/dashboard");
 });
 
-test("Admin navigating to /super-admin/dashboard is denied with 403 and permitted home link", () => {
+test("Admin navigating to /administrator/dashboard is denied with 403 and permitted home link", () => {
   const adminSession = { userId: "a-1", role: "admin" };
-  const res = resolveDashboardNavigation(adminSession, "/super-admin/dashboard");
+  const res = resolveDashboardNavigation(adminSession, "/administrator/dashboard");
   assert.equal(res.action, "deny_403");
   assert.equal(res.allowed, false);
   assert.equal(res.permittedHome, "/admin/dashboard");
 });
 
-test("Super Admin navigating to /super-admin/dashboard is granted access", () => {
+test("Administrator navigating to /administrator/dashboard is granted access", () => {
   const saSession = { userId: "sa-1", role: "super_admin" };
-  const res = resolveDashboardNavigation(saSession, "/super-admin/dashboard");
+  const res = resolveDashboardNavigation(saSession, "/administrator/dashboard");
   assert.equal(res.action, "render");
   assert.equal(res.allowed, true);
 });
 
-test("Super Admin can view Admin Console (/admin/dashboard)", () => {
+test("Administrator can view Admin Console (/admin/dashboard)", () => {
   const saSession = { userId: "sa-1", role: "super_admin" };
   const res = resolveDashboardNavigation(saSession, "/admin/dashboard");
   assert.equal(res.action, "render");
@@ -354,10 +358,10 @@ test("Super Admin can view Admin Console (/admin/dashboard)", () => {
 });
 
 section("Scenario 6: Unauthenticated Access Redirections");
-test("Unauthenticated user accessing /super-admin/dashboard redirects to /super-admin/login", () => {
-  const res = resolveDashboardNavigation(null, "/super-admin/dashboard");
+test("Unauthenticated user accessing /administrator/dashboard redirects to /administrator/login", () => {
+  const res = resolveDashboardNavigation(null, "/administrator/dashboard");
   assert.equal(res.action, "redirect");
-  assert.equal(res.target, "/super-admin/login?next=%2Fsuper-admin%2Fdashboard");
+  assert.equal(res.target, "/administrator/login?next=%2Fadministrator%2Fdashboard");
 });
 
 test("Unauthenticated user accessing /admin/dashboard redirects to /admin/login", () => {
@@ -431,7 +435,7 @@ test("Security Guard calling Admin API route throws HTTP 403", () => {
   );
 });
 
-test("Admin calling Super Admin-only API (e.g. system reset) throws HTTP 403", () => {
+test("Admin calling Administrator-only API (e.g. system reset) throws HTTP 403", () => {
   const adminSession = { userId: "a-1", role: "admin" };
   assert.throws(
     () => mockRequireRole(adminSession, "super_admin"),
@@ -443,7 +447,7 @@ test("Admin calling Super Admin-only API (e.g. system reset) throws HTTP 403", (
   );
 });
 
-test("Super Admin calling Super Admin API is authorized", () => {
+test("Administrator calling Administrator API is authorized", () => {
   const saSession = { userId: "sa-1", role: "super_admin" };
   const authorized = mockRequireRole(saSession, "super_admin");
   assert.equal(authorized.role, "super_admin");
