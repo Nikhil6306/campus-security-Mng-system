@@ -46,14 +46,17 @@ export function LoginForm({
 
   const getSafeRedirect = (target: string | null, role: Role): string => {
     if (!target) return ROLE_HOME[role];
-    if (target.startsWith("/super-admin") && role !== "super_admin") {
+    if (
+      (target.startsWith("/administrator") || target.startsWith("/super-admin")) &&
+      role !== "super_admin"
+    ) {
       return ROLE_HOME[role];
     }
     if (target.startsWith("/admin") && role !== "admin" && role !== "super_admin") {
       return ROLE_HOME[role];
     }
     if (
-      target.startsWith("/security") &&
+      (target.startsWith("/security") || target.startsWith("/guard")) &&
       role !== "security" &&
       role !== "admin" &&
       role !== "super_admin"
@@ -105,18 +108,18 @@ export function LoginForm({
 
   const defaultTitle =
     expectedRole === "super_admin"
-      ? "Super Admin Login"
+      ? "Administrator Login"
       : expectedRole === "admin"
-        ? "Administrator Login"
+        ? "Admin Login"
         : expectedRole === "security"
           ? "Security Guard Login"
           : "Sign in to the console";
 
   const defaultSubtitle =
     expectedRole === "super_admin"
-      ? "Restricted portal for Campus Security Directors and Super Administrators."
+      ? "Master executive console for Campus Security Directors and University Administrators."
       : expectedRole === "admin"
-        ? "Access the campus security administrative dashboard, approvals and reports."
+        ? "Access the campus security operational dashboard, approvals and reports."
         : expectedRole === "security"
           ? "Gate operations console — verification, check-in, check-out and patrol dispatch."
           : "Access the campus security dashboard, approvals and gate operations.";

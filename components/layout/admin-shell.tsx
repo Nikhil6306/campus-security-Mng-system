@@ -21,7 +21,7 @@ const ADMIN_ROLES: Role[] = ["admin", "super_admin"];
 
 /** Where a signed-in user belongs when they are not an administrator. */
 const HOME_FOR_ROLE: Record<string, string> = {
-  super_admin: "/super-admin/dashboard",
+  super_admin: "/administrator/dashboard",
   admin: "/admin/dashboard",
   security: "/security/dashboard",
   teacher: "/teacher/dashboard",

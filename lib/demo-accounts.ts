@@ -22,17 +22,17 @@ export interface DemoAccount {
 export const DEMO_ACCOUNTS: DemoAccount[] = [
   {
     role: "super_admin",
-    label: "Super Administrator",
+    label: "Administrator",
     email: "superadmin@dsvv.edu.in",
     name: "Campus Security Director",
-    description: "Full access, including staff records and demo data reset.",
+    description: "Full executive access, staff records, system settings and policy controls.",
   },
   {
     role: "admin",
-    label: "Administrator",
+    label: "Admin",
     email: "admin@dsvv.edu.in",
     name: "Security Administrator",
-    description: "Visitors, bookings, guards, incidents and reports.",
+    description: "Daily campus operations: visitors, bookings, guards, shifts and reports.",
   },
   {
     role: "security",
