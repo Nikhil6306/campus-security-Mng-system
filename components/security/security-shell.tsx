@@ -87,7 +87,15 @@ export function SecurityShell({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     if (!ready || isLoginRoute) return;
     if (!session) {
-      router.replace(`/security/login?next=${encodeURIComponent(pathname)}`);
+      if (typeof document !== "undefined") {
+        document.cookie = "csms_role=; path=/; max-age=0;";
+      }
+      const target = `/security/login?next=${encodeURIComponent(pathname)}`;
+      if (typeof window !== "undefined") {
+        window.location.replace(target);
+      } else {
+        router.replace(target);
+      }
     } else if (!allowed) {
       router.replace(session.role === "super_admin" ? "/super-admin/dashboard" : "/admin/dashboard");
     }
@@ -106,8 +114,17 @@ export function SecurityShell({ children }: { children: React.ReactNode }) {
   // Not signed in
   if (!session) {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-navy">
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-3 bg-navy p-4 text-white">
         <InlineLoader label="Redirecting to Security login…" />
+        <p className="text-xs text-white/70">
+          If you are not redirected automatically,{" "}
+          <a
+            href={`/security/login?next=${encodeURIComponent(pathname)}`}
+            className="font-medium text-amber-300 underline underline-offset-4 hover:text-amber-200"
+          >
+            click here to log in
+          </a>.
+        </p>
       </div>
     );
   }
