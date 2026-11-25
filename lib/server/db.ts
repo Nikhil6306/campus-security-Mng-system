@@ -34,7 +34,11 @@ const defaultDbPath = process.env.VERCEL
   ? "/tmp/campus-security.db"
   : resolve(process.cwd(), ".data/campus-security.db");
 
-const DB_PATH = resolve(process.env.DATABASE_FILE ?? defaultDbPath);
+const DB_PATH = process.env.VERCEL
+  ? (process.env.DATABASE_FILE && process.env.DATABASE_FILE.startsWith("/tmp")
+      ? resolve(process.env.DATABASE_FILE)
+      : "/tmp/campus-security.db")
+  : resolve(process.env.DATABASE_FILE ?? defaultDbPath);
 const POSTGRES_URL =
   process.env.SUPABASE_DB_URL?.trim() || process.env.DATABASE_URL?.trim();
 export const databaseDriver: DatabaseDriver =

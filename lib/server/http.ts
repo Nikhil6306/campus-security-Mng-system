@@ -58,8 +58,11 @@ function toApiError(error: unknown): AppError | AuthError {
   if (translated) return translated;
 
   console.error("[api] unhandled error", error);
+  const errMsg = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
   return new AppError(
-    "Something went wrong on our side. Please try again.",
+    process.env.NODE_ENV === "production" && !process.env.VERCEL_DEBUG
+      ? `Something went wrong on our side (${errMsg}). Please try again.`
+      : `Something went wrong on our side (${errMsg}). Please try again.`,
     500,
     "internal_error",
   );

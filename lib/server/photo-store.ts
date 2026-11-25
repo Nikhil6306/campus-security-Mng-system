@@ -40,9 +40,11 @@ const defaultPhotoDir = process.env.VERCEL
   ? "/tmp/visitor-photos"
   : resolve(process.cwd(), ".data/visitor-photos");
 
-const ROOT = resolve(
-  process.env.VISITOR_PHOTO_DIR ?? defaultPhotoDir,
-);
+const ROOT = process.env.VERCEL
+  ? (process.env.VISITOR_PHOTO_DIR && process.env.VISITOR_PHOTO_DIR.startsWith("/tmp")
+      ? resolve(process.env.VISITOR_PHOTO_DIR)
+      : "/tmp/visitor-photos")
+  : resolve(process.env.VISITOR_PHOTO_DIR ?? defaultPhotoDir);
 
 export interface StoredPhoto {
   id: string;
