@@ -151,6 +151,7 @@ export default function GuardProfilePage() {
       <div className="flex flex-wrap items-start gap-4">
         <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-2xl font-bold text-primary shadow-sm">
           {guard.photoUrl ? (
+            /* eslint-disable-next-line @next/next/no-img-element */
             <img
               src={guard.photoUrl}
               alt={guard.fullName}
