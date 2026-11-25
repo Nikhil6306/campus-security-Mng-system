@@ -15,7 +15,7 @@ import "server-only";
  *    value cannot be written even by a direct SQL client.
  */
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export const SCHEMA_SQL = /* sql */ `
 PRAGMA journal_mode = WAL;
@@ -134,6 +134,25 @@ CREATE TABLE IF NOT EXISTS security_guards (
 );
 CREATE INDEX IF NOT EXISTS idx_guards_status ON security_guards(status);
 CREATE INDEX IF NOT EXISTS idx_guards_gate ON security_guards(assigned_gate);
+
+CREATE TABLE IF NOT EXISTS guard_registration_requests (
+  id               TEXT PRIMARY KEY,
+  full_name        TEXT NOT NULL,
+  email            TEXT NOT NULL UNIQUE,
+  phone            TEXT NOT NULL,
+  guard_id         TEXT NOT NULL,
+  designation      TEXT NOT NULL DEFAULT 'Security Guard',
+  assigned_gate    TEXT NOT NULL DEFAULT 'Main Gate',
+  password_hash    TEXT NOT NULL,
+  password_salt    TEXT NOT NULL,
+  status           TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING','APPROVED','REJECTED','SUSPENDED')),
+  rejection_reason TEXT,
+  created_at       TEXT NOT NULL,
+  reviewed_at      TEXT,
+  reviewed_by      TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_guard_req_status ON guard_registration_requests(status);
+CREATE INDEX IF NOT EXISTS idx_guard_req_email ON guard_registration_requests(email);
 
 CREATE TABLE IF NOT EXISTS students (
   id             TEXT PRIMARY KEY,
@@ -896,6 +915,27 @@ CREATE TABLE IF NOT EXISTS student_gate_events (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uniq_sge_direction ON student_gate_events(pass_id, direction) WHERE is_override = 0;
 CREATE INDEX IF NOT EXISTS idx_sge_student ON student_gate_events(student_id);
+
+/* ---------------------------------------------------------------- *
+ * Cloud Sync Outbox (Offline-First Deferred Synchronization)
+ * ---------------------------------------------------------------- */
+
+CREATE TABLE IF NOT EXISTS sync_outbox (
+  id           TEXT PRIMARY KEY,
+  table_name   TEXT NOT NULL,
+  record_id    TEXT NOT NULL,
+  operation    TEXT NOT NULL CHECK (operation IN ('upsert','insert','update','delete')),
+  payload      TEXT NOT NULL,
+  match_column TEXT NOT NULL DEFAULT 'id',
+  attempts     INTEGER NOT NULL DEFAULT 0,
+  last_error   TEXT,
+  created_at   TEXT NOT NULL,
+  updated_at   TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_sync_outbox_record
+  ON sync_outbox(table_name, record_id, operation);
+CREATE INDEX IF NOT EXISTS idx_sync_outbox_created
+  ON sync_outbox(created_at);
 `;
 
 /**

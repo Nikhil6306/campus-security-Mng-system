@@ -328,7 +328,7 @@ export default function AdministratorDashboardPage() {
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <CalendarDays className="h-4 w-4 text-primary" />
-                <h3 className="text-sm font-bold text-foreground">Today's Faculty Meetings</h3>
+                <h3 className="text-sm font-bold text-foreground">Today&apos;s Faculty Meetings</h3>
               </div>
               <Badge variant="secondary" className="text-xs">
                 {todayMeetings.length}

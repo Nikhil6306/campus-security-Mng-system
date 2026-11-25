@@ -14,14 +14,15 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "node tests/unit.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types tests/email-service.mjs && node tests/supabase-migration-safety.mjs && node tests/gate-in-out-workflow.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types tests/deployment-config.mjs",
+    "test": "node tests/unit.mjs && node tests/offline-persistence.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types tests/email-service.mjs && node tests/supabase-migration-safety.mjs && node tests/gate-in-out-workflow.mjs && node tests/guard-authentication-and-approval.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types tests/deployment-config.mjs",
+    "test:offline": "node tests/offline-persistence.mjs",
     "test:e2e": "node tests/e2e-journey.mjs",
     "test:security": "node tests/security-audit.mjs",
     "test:prebooking": "node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types tests/prebooking.mjs",
     "test:photo": "node tests/visitor-photo.mjs",
     "test:whatsapp": "node tests/whatsapp-faculty-approval.mjs",
     "test:deployment-config": "node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types tests/deployment-config.mjs",
-    "test:all": "node tests/unit.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types tests/prebooking.mjs && node tests/whatsapp-faculty-approval.mjs && node tests/gate-in-out-workflow.mjs"
+    "test:all": "node tests/unit.mjs && node tests/offline-persistence.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types tests/prebooking.mjs && node tests/whatsapp-faculty-approval.mjs && node tests/gate-in-out-workflow.mjs"
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "^1.1.6",

@@ -12,14 +12,22 @@ import { appStorage } from './storage';
 const DEFAULT_SERVER_URL =
   process.env.EXPO_PUBLIC_API_URL ||
   process.env.NEXT_PUBLIC_APP_URL ||
-  (process.env.NODE_ENV === 'development'
-    ? Platform.select({
-        android: 'http://10.0.2.2:3000',
-        default: 'http://localhost:3000',
-      })
-    : '');
+  'https://campus-security-management.vercel.app';
 
-export const API_BASE_URL = DEFAULT_SERVER_URL ?? '';
+export const API_BASE_URL = DEFAULT_SERVER_URL;
+
+/**
+ * Robust fetch with timeout to prevent hung requests on slow mobile connections.
+ */
+async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 8000): Promise<Response> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(id);
+  }
+}
 
 export interface GuardSession {
   userId: string;
@@ -92,6 +100,65 @@ export interface MobileGateResult {
   gate?: string;
   timestamp?: string;
   error?: string;
+  offlineQueued?: boolean;
+}
+
+export interface OfflineGateAction {
+  id: string;
+  action: 'in' | 'out';
+  bookingId: string;
+  gate: string;
+  note?: string;
+  timestamp: string;
+}
+
+export async function getOfflineGateActions(): Promise<OfflineGateAction[]> {
+  try {
+    const raw = await appStorage.getItem('pending_gate_actions');
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function queueOfflineGateAction(action: OfflineGateAction): Promise<void> {
+  const current = await getOfflineGateActions();
+  const filtered = current.filter(
+    (item) => !(item.action === action.action && item.bookingId === action.bookingId),
+  );
+  filtered.push(action);
+  await appStorage.setItem('pending_gate_actions', JSON.stringify(filtered));
+}
+
+export async function syncOfflineGateActions(): Promise<{ synced: number; remaining: number }> {
+  const pending = await getOfflineGateActions();
+  if (pending.length === 0) return { synced: 0, remaining: 0 };
+
+  const remaining: OfflineGateAction[] = [];
+  let synced = 0;
+
+  for (const item of pending) {
+    try {
+      const endpoint = item.action === 'in' ? `${API_BASE_URL}/api/gate/check-in` : `${API_BASE_URL}/api/gate/check-out`;
+      const res = await fetchWithTimeout(endpoint, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ bookingId: item.bookingId, gate: item.gate, note: item.note }),
+      }, 5000);
+
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.ok) {
+        synced++;
+      } else {
+        remaining.push(item);
+      }
+    } catch {
+      remaining.push(item);
+    }
+  }
+
+  await appStorage.setItem('pending_gate_actions', JSON.stringify(remaining));
+  return { synced, remaining: remaining.length };
 }
 
 export interface GuardDashboardData {
@@ -164,48 +231,138 @@ function authHeaders(): Record<string, string> {
 export async function loginGuard(
   email: string,
   password: string,
-): Promise<{ success: boolean; session?: GuardSession; error?: string }> {
+): Promise<{ success: boolean; session?: GuardSession; error?: string; statusType?: 'PENDING' | 'REJECTED' | 'SUSPENDED' | 'AUTH_ERROR' }> {
   try {
-    const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: email.trim(), password }),
-    });
+    }, 9000);
 
     const data = await res.json().catch(() => ({}));
     if (res.ok && data.ok) {
-      const userRole = data.data?.session?.role;
+      const sessionObj = data.data?.session || data.data || {};
+      const userRole = sessionObj.role;
       // Strict role check for mobile guard app
       if (userRole !== 'security' && userRole !== 'admin' && userRole !== 'super_admin') {
         return {
           success: false,
           error: 'Access denied: This mobile application is restricted to authorized campus security guards and gate officers.',
+          statusType: 'AUTH_ERROR',
         };
       }
 
       const session: GuardSession = {
-        userId: data.data?.session?.userId || 'guard-auth',
-        name: data.data?.session?.name || 'Security Officer',
-        email: data.data?.session?.email || email,
+        userId: sessionObj.userId || 'guard-auth',
+        name: sessionObj.name || 'Security Officer',
+        email: sessionObj.email || email,
         role: userRole,
-        gate: data.data?.session?.gate || 'Main Gate',
-        refId: data.data?.session?.refId,
-        token: data.data?.token,
-        loginAt: data.data?.session?.loginAt || new Date().toISOString(),
+        gate: sessionObj.gate || 'Main Gate',
+        refId: sessionObj.refId,
+        token: data.token || sessionObj.token || data.data?.token,
+        loginAt: sessionObj.loginAt || new Date().toISOString(),
       };
       setGuardSession(session);
       return { success: true, session };
     }
 
+    const errorMsg = data.error?.message || 'Invalid guard credentials or access not authorized.';
+    let statusType: 'PENDING' | 'REJECTED' | 'SUSPENDED' | 'AUTH_ERROR' = 'AUTH_ERROR';
+    if (/pending administrator approval/i.test(errorMsg)) {
+      statusType = 'PENDING';
+    } else if (/rejected/i.test(errorMsg)) {
+      statusType = 'REJECTED';
+    } else if (/suspended|deactivated/i.test(errorMsg)) {
+      statusType = 'SUSPENDED';
+    }
+
     return {
       success: false,
-      error: data.error?.message || 'Invalid guard credentials or access not authorized.',
+      error: errorMsg,
+      statusType,
     };
   } catch (err) {
     return {
       success: false,
       error: 'Cannot reach the campus server. Please check your network connection or verify that the server is online.',
+      statusType: 'AUTH_ERROR',
     };
+  }
+}
+
+export interface RegisterGuardInput {
+  fullName: string;
+  email: string;
+  phone: string;
+  guardId: string;
+  password: string;
+  designation?: string;
+  assignedGate?: string;
+}
+
+/**
+ * Submits a new security guard registration request.
+ */
+export async function registerGuard(
+  input: RegisterGuardInput,
+): Promise<{ success: boolean; message: string; data?: any; error?: string }> {
+  try {
+    const res = await fetchWithTimeout(
+      `${API_BASE_URL}/api/guards/register`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      },
+      9000,
+    );
+
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.ok) {
+      return {
+        success: true,
+        message: data.message || 'Registration submitted successfully. Waiting for Admin approval.',
+        data: data.data,
+      };
+    }
+
+    return {
+      success: false,
+      message: data.error?.message || 'Registration failed. Please check inputs and try again.',
+      error: data.error?.message,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      message: 'Cannot reach the campus server. Please check your internet connection.',
+      error: 'network_error',
+    };
+  }
+}
+
+/**
+ * Checks guard registration or account status by email.
+ */
+export async function checkGuardStatus(
+  email: string,
+): Promise<{ status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'SUSPENDED' | 'NOT_FOUND' | 'ERROR'; message?: string; rejectionReason?: string }> {
+  try {
+    const res = await fetchWithTimeout(
+      `${API_BASE_URL}/api/guards/status?email=${encodeURIComponent(email.trim().toLowerCase())}`,
+      { method: 'GET' },
+      6000,
+    );
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.ok) {
+      return {
+        status: data.status,
+        message: data.message,
+        rejectionReason: data.rejectionReason,
+      };
+    }
+    return { status: 'NOT_FOUND' };
+  } catch {
+    return { status: 'ERROR' };
   }
 }
 
@@ -234,11 +391,11 @@ export async function verifyVisitorPass(input: { token?: string; bookingId?: str
     : { bookingId: input.bookingId?.trim() };
 
   try {
-    const res = await fetch(`${API_BASE_URL}/api/gate/verify`, {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/gate/verify`, {
       method: 'POST',
       headers: authHeaders(),
       body: JSON.stringify(payload),
-    });
+    }, 8000);
 
     const json = await res.json().catch(() => ({}));
     if (res.ok && json.ok && json.data) {
@@ -270,14 +427,15 @@ export async function verifyVisitorPass(input: { token?: string; bookingId?: str
 
 /**
  * Marks visitor IN at gate.
+ * If server is offline, queues the action durably on device and reports success with offline flag.
  */
 export async function markVisitorIn(bookingId: string, gate = 'Main Gate', note?: string): Promise<MobileGateResult> {
   try {
-    const res = await fetch(`${API_BASE_URL}/api/gate/check-in`, {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/gate/check-in`, {
       method: 'POST',
       headers: authHeaders(),
       body: JSON.stringify({ bookingId, gate, note }),
-    });
+    }, 8000);
 
     const json = await res.json().catch(() => ({}));
     if (res.ok && json.ok) {
@@ -295,23 +453,36 @@ export async function markVisitorIn(bookingId: string, gate = 'Main Gate', note?
       error: json.error?.message || 'Check-in could not be recorded.',
     };
   } catch (err) {
+    // Durable offline queue fallback
+    await queueOfflineGateAction({
+      id: `OFFLINE-IN-${bookingId}-${Date.now()}`,
+      action: 'in',
+      bookingId,
+      gate,
+      note,
+      timestamp: new Date().toISOString(),
+    });
     return {
-      success: false,
-      error: 'Network connection failure. Check-in was not recorded.',
+      success: true,
+      guardName: currentSession?.name || 'Gate Guard',
+      gate,
+      timestamp: `${new Date().toLocaleTimeString()} (Offline Saved)`,
+      offlineQueued: true,
     };
   }
 }
 
 /**
  * Marks visitor OUT at gate.
+ * If server is offline, queues the action durably on device and reports success with offline flag.
  */
 export async function markVisitorOut(bookingId: string, gate = 'Main Gate', note?: string): Promise<MobileGateResult> {
   try {
-    const res = await fetch(`${API_BASE_URL}/api/gate/check-out`, {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/gate/check-out`, {
       method: 'POST',
       headers: authHeaders(),
       body: JSON.stringify({ bookingId, gate, note }),
-    });
+    }, 8000);
 
     const json = await res.json().catch(() => ({}));
     if (res.ok && json.ok) {
@@ -329,9 +500,21 @@ export async function markVisitorOut(bookingId: string, gate = 'Main Gate', note
       error: json.error?.message || 'Check-out could not be recorded.',
     };
   } catch (err) {
+    // Durable offline queue fallback
+    await queueOfflineGateAction({
+      id: `OFFLINE-OUT-${bookingId}-${Date.now()}`,
+      action: 'out',
+      bookingId,
+      gate,
+      note,
+      timestamp: new Date().toISOString(),
+    });
     return {
-      success: false,
-      error: 'Network connection failure. Check-out was not recorded.',
+      success: true,
+      guardName: currentSession?.name || 'Gate Guard',
+      gate,
+      timestamp: `${new Date().toLocaleTimeString()} (Offline Saved)`,
+      offlineQueued: true,
     };
   }
 }
@@ -343,8 +526,8 @@ export async function getGuardDashboardData(date?: string): Promise<GuardDashboa
   try {
     const q = date ? `?date=${encodeURIComponent(date)}` : '';
     const [dashRes, stateRes] = await Promise.all([
-      fetch(`${API_BASE_URL}/api/guard-duty/dashboard${q}`, { headers: authHeaders() }),
-      fetch(`${API_BASE_URL}/api/state`, { headers: authHeaders() }),
+      fetchWithTimeout(`${API_BASE_URL}/api/guard-duty/dashboard${q}`, { headers: authHeaders() }, 8000),
+      fetchWithTimeout(`${API_BASE_URL}/api/state`, { headers: authHeaders() }, 8000),
     ]);
 
     const dashJson = await dashRes.json().catch(() => ({}));

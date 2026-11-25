@@ -71,11 +71,7 @@ export function SuperAdminShell({ children }: { children: React.ReactNode }) {
         document.cookie = "csms_role=; path=/; max-age=0;";
       }
       const target = `/super-admin/login?next=${encodeURIComponent(pathname)}`;
-      if (typeof window !== "undefined") {
-        window.location.replace(target);
-      } else {
-        router.replace(target);
-      }
+      router.replace(target);
     }
   }, [ready, session, isPublicRoute, pathname, router]);
 

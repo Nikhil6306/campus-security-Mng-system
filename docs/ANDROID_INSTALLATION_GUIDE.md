@@ -53,7 +53,7 @@ Because this is an in-house enterprise security application for Dev Sanskriti Vi
 
 1. On the **Guard Sign In** screen, enter your duty credentials:
    - **Work Email:** e.g. `security@dsvv.edu.in`
-   - **Password:** As provided by the Security Administrator (e.g. `Security@123` for demo stations).
+   - **Password:** As provided during registration and approved by the Security Administrator.
 2. Tap **Sign In as Guard**.
 3. Verify that your designated gate appears on the top banner (e.g., "Main Gate - Shift A").
 4. The application is now fully configured and ready for gate operations.

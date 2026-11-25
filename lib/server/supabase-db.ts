@@ -1,15 +1,280 @@
 import "server-only";
 
 import { getSupabaseAdminClient, isSupabaseConfigured } from "@/lib/supabase";
-import { run, tx } from "./db";
+import { all, get, run, tx } from "./db";
 
 /**
  * Supabase database persistence & synchronization layer.
  * Ensures the application state is persisted to Supabase as the single source of truth.
+ *
+ * Implements an offline-first architecture:
+ * - When Supabase is reachable, writes persist directly to PostgreSQL, and pending outbox is drained.
+ * - When Supabase is unreachable (network down, DNS failure, timeout), writes are safely queued
+ *   into the durable SQLite `sync_outbox` table and retried when connectivity is restored.
+ * - Real schema, data validation, or constraint errors are NOT treated as network errors and are
+ *   never silently ignored.
  */
 
 let lastSyncTimestamp = 0;
 const SYNC_INTERVAL_MS = 10_000; // 10 seconds throttle
+let isProcessingOutbox = false;
+
+/**
+ * Detects whether an error is a transient transport/network error (DNS, offline, timeout, connection refused)
+ * as opposed to a definitive schema, constraint, or data validation error from the database.
+ */
+export function isNetworkError(error: unknown): boolean {
+  if (!error) return false;
+
+  if (typeof error === "object") {
+    const errObj = error as Record<string, unknown>;
+
+    // Real database / PostgREST error codes (PostgreSQL SQLSTATE codes or PostgREST error strings)
+    // E.g., '23505' (unique violation), '23503' (foreign key), '42P01' (undefined table), 'PGRST...'
+    const code = String(errObj.code || "");
+    if (code && (/^\d{5}$/.test(code) || code.startsWith("PGRST") || code.startsWith("23") || code.startsWith("42"))) {
+      return false;
+    }
+
+    // HTTP 4xx errors from Supabase/PostgREST are client/data/auth errors, NOT transient network errors
+    const status = Number(errObj.status || errObj.statusCode || 0);
+    if (status >= 400 && status < 500) {
+      return false;
+    }
+
+    // Cloud proxy/gateway transient errors (502 Bad Gateway, 503 Service Unavailable, 504 Gateway Timeout)
+    if (status === 502 || status === 503 || status === 504) {
+      return true;
+    }
+
+    // Check inner cause (Node undici / fetch cause errors)
+    const cause = errObj.cause as Record<string, unknown> | undefined;
+    if (cause && typeof cause === "object") {
+      const causeCode = String(cause.code || "");
+      if (
+        [
+          "ENOTFOUND",
+          "ECONNREFUSED",
+          "ECONNRESET",
+          "ETIMEDOUT",
+          "EAI_AGAIN",
+          "ENETUNREACH",
+          "EHOSTUNREACH",
+          "UND_ERR_CONNECT_TIMEOUT",
+          "UND_ERR_SOCKET",
+        ].includes(causeCode)
+      ) {
+        return true;
+      }
+      const causeName = String(cause.name || "");
+      if (causeName === "ConnectTimeoutError" || causeName === "TimeoutError") {
+        return true;
+      }
+      const causeMsg = String(cause.message || "").toLowerCase();
+      if (causeMsg.includes("enotfound") || causeMsg.includes("econnrefused") || causeMsg.includes("fetch failed")) {
+        return true;
+      }
+    }
+
+    // Node network error codes on the error object itself
+    if (
+      [
+        "ENOTFOUND",
+        "ECONNREFUSED",
+        "ECONNRESET",
+        "ETIMEDOUT",
+        "EAI_AGAIN",
+        "ENETUNREACH",
+        "EHOSTUNREACH",
+      ].includes(code)
+    ) {
+      return true;
+    }
+
+    // Abort or Timeout errors
+    const name = String(errObj.name || "");
+    if (name === "AbortError" || name === "TimeoutError" || name === "ConnectTimeoutError") {
+      return true;
+    }
+
+    // Inspect error message
+    const message = String(errObj.message || "").toLowerCase();
+    if (
+      message.includes("fetch failed") ||
+      message.includes("network error") ||
+      message.includes("failed to fetch") ||
+      message.includes("enotfound") ||
+      message.includes("econnrefused") ||
+      message.includes("econnreset") ||
+      message.includes("etimedout") ||
+      message.includes("connection refused") ||
+      message.includes("network request failed") ||
+      message.includes("getaddrinfo")
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Safely enqueues a database mutation into the durable SQLite sync_outbox table.
+ * Deduplicates queued records by (table_name, record_id, operation) so repeated retries or offline updates
+ * never produce duplicate entries.
+ */
+export function enqueueSyncOutbox(
+  table: string,
+  recordId: string,
+  operation: "upsert" | "insert" | "update" | "delete",
+  data: Record<string, unknown> | Record<string, unknown>[],
+  matchColumn = "id",
+  lastError?: string,
+): void {
+  const timestamp = new Date().toISOString();
+  const id = `SYNC-${table}-${recordId}-${operation}`;
+  const payload = JSON.stringify(data);
+
+  try {
+    run(
+      `INSERT INTO sync_outbox (id, table_name, record_id, operation, payload, match_column, attempts, last_error, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
+       ON CONFLICT(table_name, record_id, operation) DO UPDATE SET
+         payload = excluded.payload,
+         match_column = excluded.match_column,
+         last_error = excluded.last_error,
+         updated_at = excluded.updated_at`,
+      [id, table, recordId, operation, payload, matchColumn, lastError || null, timestamp, timestamp],
+    );
+  } catch (outboxErr) {
+    console.error(`[supabase-db] Failed to write to sync_outbox for table ${table} record ${recordId}:`, outboxErr);
+  }
+}
+
+/**
+ * Retries and drains pending records in the sync_outbox queue when Supabase connectivity returns.
+ * Deletes successfully synced records from SQLite.
+ */
+export async function processSyncOutbox(): Promise<{ processed: number; succeeded: number; failed: number }> {
+  if (!isSupabaseConfigured()) return { processed: 0, succeeded: 0, failed: 0 };
+  if (isProcessingOutbox) return { processed: 0, succeeded: 0, failed: 0 };
+
+  isProcessingOutbox = true;
+  try {
+    let pending: {
+      id: string;
+      table_name: string;
+      record_id: string;
+      operation: "upsert" | "insert" | "update" | "delete";
+      payload: string;
+      match_column: string;
+      attempts: number;
+    }[] = [];
+
+    try {
+      pending = all<{
+        id: string;
+        table_name: string;
+        record_id: string;
+        operation: "upsert" | "insert" | "update" | "delete";
+        payload: string;
+        match_column: string;
+        attempts: number;
+      }>("SELECT * FROM sync_outbox ORDER BY created_at ASC LIMIT 50");
+    } catch {
+      // sync_outbox table may not exist yet if schema has not initialized
+      return { processed: 0, succeeded: 0, failed: 0 };
+    }
+
+    if (pending.length === 0) return { processed: 0, succeeded: 0, failed: 0 };
+
+    let succeeded = 0;
+    let failed = 0;
+
+    const admin = getSupabaseAdminClient();
+
+    for (const item of pending) {
+      try {
+        const data = JSON.parse(item.payload) as Record<string, unknown> | Record<string, unknown>[];
+        const target = admin.from(item.table_name);
+
+        if (item.operation === "delete") {
+          const matchVal = (data as Record<string, unknown>)[item.match_column] ?? item.record_id;
+          if (matchVal !== undefined) {
+            const { error } = await target.delete().eq(item.match_column, matchVal);
+            if (error) throw error;
+          }
+        } else if (item.operation === "update") {
+          const matchVal = (data as Record<string, unknown>)[item.match_column] ?? item.record_id;
+          if (matchVal !== undefined) {
+            const { error } = await target.update(data).eq(item.match_column, matchVal);
+            if (error) throw error;
+          }
+        } else if (item.operation === "insert") {
+          const { error } = await target.insert(data);
+          if (error) throw error;
+        } else {
+          // upsert
+          const { error } = await target.upsert(data, { onConflict: item.match_column });
+          if (error) throw error;
+        }
+
+        // Successfully pushed to cloud: remove from outbox
+        run("DELETE FROM sync_outbox WHERE id = ?", [item.id]);
+        succeeded++;
+      } catch (error) {
+        failed++;
+        const errorMsg =
+          error && typeof error === "object" && "message" in error
+            ? (error as { message: string }).message
+            : String(error);
+
+        if (isNetworkError(error)) {
+          // Network still unreachable: pause outbox drain until next cycle
+          try {
+            run(
+              "UPDATE sync_outbox SET attempts = attempts + 1, last_error = ?, updated_at = ? WHERE id = ?",
+              [errorMsg, new Date().toISOString(), item.id],
+            );
+          } catch {
+            // Ignore SQLite update failure
+          }
+          console.warn(`[supabase-db] Sync outbox paused: cloud unreachable (${errorMsg})`);
+          break;
+        } else {
+          // Non-network schema/constraint error
+          console.error(`[supabase-db] Sync outbox item ${item.id} encountered database error: ${errorMsg}`);
+          try {
+            run(
+              "UPDATE sync_outbox SET attempts = attempts + 1, last_error = ?, updated_at = ? WHERE id = ?",
+              [errorMsg, new Date().toISOString(), item.id],
+            );
+          } catch {
+            // Ignore SQLite update failure
+          }
+        }
+      }
+    }
+
+    return { processed: succeeded + failed, succeeded, failed };
+  } finally {
+    isProcessingOutbox = false;
+  }
+}
+
+export function getSyncOutboxStats(): { pendingCount: number; oldestCreatedAt: string | null } {
+  try {
+    const row = get<{ count: number; oldest: string | null }>(
+      "SELECT COUNT(*) as count, MIN(created_at) as oldest FROM sync_outbox",
+    );
+    return {
+      pendingCount: row?.count ?? 0,
+      oldestCreatedAt: row?.oldest ?? null,
+    };
+  } catch {
+    return { pendingCount: 0, oldestCreatedAt: null };
+  }
+}
 
 export async function persistToSupabase(
   table: string,
@@ -42,6 +307,11 @@ export async function persistToSupabase(
       const { error } = await target.upsert(data, { onConflict: matchColumn });
       if (error) throw error;
     }
+
+    // Connectivity confirmed — drain any pending outbox items in the background
+    void processSyncOutbox().catch((drainErr) => {
+      console.warn("[supabase-db] Background outbox drain error:", drainErr);
+    });
   } catch (error) {
     const errorMsg =
       error && typeof error === "object" && "message" in error
@@ -51,6 +321,24 @@ export async function persistToSupabase(
       error && typeof error === "object" && "code" in error
         ? (error as { code: string }).code
         : "";
+
+    if (isNetworkError(error)) {
+      console.warn(
+        `[supabase-db] Cloud unreachable (${errorCode || "network error"}: ${errorMsg}) while persisting to "${table}". Queued to sync_outbox for deferred sync.`,
+      );
+      if (Array.isArray(data)) {
+        for (let i = 0; i < data.length; i++) {
+          const item = data[i];
+          const recId = String(item[matchColumn] ?? `batch-${Date.now()}-${i}`);
+          enqueueSyncOutbox(table, recId, operation, item, matchColumn, errorMsg);
+        }
+      } else {
+        const recId = String((data as Record<string, unknown>)[matchColumn] ?? `item-${Date.now()}`);
+        enqueueSyncOutbox(table, recId, operation, data, matchColumn, errorMsg);
+      }
+      return;
+    }
+
     console.error(`[supabase-db] Persisting to "${table}" failed (${errorCode || "error"}): ${errorMsg}`);
     throw error;
   }
@@ -121,6 +409,13 @@ export async function syncFromSupabase(force = false): Promise<void> {
 
   try {
     const admin = getSupabaseAdminClient();
+
+    // 0. Drain pending outbox first so cloud has latest local mutations before reading
+    try {
+      await processSyncOutbox();
+    } catch (outboxErr) {
+      console.warn("[supabase-db] Outbox sync before pull failed:", outboxErr);
+    }
 
     // 1. Campus gates
     const { data: gates } = await admin.from("campus_gates").select("*");

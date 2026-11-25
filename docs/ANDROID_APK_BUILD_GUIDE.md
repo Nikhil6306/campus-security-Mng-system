@@ -61,7 +61,5 @@ The resulting release APK will be located at:
 4. Tap **Install**.
 5. Launch **Campus Security Guard**.
 6. When prompted on first launch or QR scan, tap **Allow** for Camera and Network access.
-7. Sign in using security credentials:
-   - Email: `security@dsvv.edu.in`
-   - Password: `Security@123`
+7. Sign in using approved guard credentials or tap **Register New Guard** to request security station access.
 

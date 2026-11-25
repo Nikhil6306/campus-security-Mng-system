@@ -14,6 +14,7 @@ import {
   Mail,
   Phone,
   Plus,
+  ShieldAlert,
   ShieldCheck,
   UserRound,
   Users,
@@ -34,7 +35,7 @@ import { useData } from "@/components/providers/data-provider";
 import { api } from "@/lib/api";
 import type { GuardRosterRow } from "@/lib/api";
 import type { SecurityGuard } from "@/lib/types";
-import { GUARD_SHIFTS, GUARD_STATUSES } from "@/lib/types";
+import { GUARD_SHIFTS } from "@/lib/types";
 import { formatDateTime, initials } from "@/lib/utils";
 
 /**
@@ -67,6 +68,31 @@ function GuardsView() {
   const [scheduleGuard, setScheduleGuard] = React.useState<SecurityGuard | null>(null);
   const [pendingCount, setPendingCount] = React.useState(0);
   const [regRefresh, setRegRefresh] = React.useState(0);
+
+  const handleToggleSuspend = async (guard: SecurityGuard) => {
+    const isSuspended = guard.status === "Suspended";
+    const action = isSuspended ? "reactivate" : "suspend";
+    const confirmMsg = isSuspended
+      ? `Re-activate guard ${guard.fullName}? This will restore their active gate permissions and account access.`
+      : `Suspend guard ${guard.fullName}? This will immediately cut their gate session and revoke active access.`;
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+      const res = await fetch("/api/guards/registrations", {
+        method: "PATCH",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: guard.id, action }),
+      });
+      const env = await res.json();
+      if (!env.ok) throw new Error(env.error?.message || "Operation failed.");
+      const updated = await api.guards();
+      setRows(updated);
+      setRegRefresh((n) => n + 1);
+    } catch (err) {
+      alert((err as Error).message || "Operation failed.");
+    }
+  };
 
   // Re-fetch whenever the shared snapshot moves, so a check-in elsewhere in the
   // building updates these counters without a page reload.
@@ -122,8 +148,6 @@ function GuardsView() {
 
   const loading = !ready || rows === null;
   const onDuty = rows?.filter((r) => r.guard.status === "On Duty" || r.guard.status === "Active");
-  const checkInsToday = rows?.reduce((sum, r) => sum + r.today.checkIns, 0) ?? 0;
-  const incidentsToday = rows?.reduce((sum, r) => sum + r.today.incidentsReported, 0) ?? 0;
 
   return (
     <div className="space-y-6">
@@ -153,43 +177,66 @@ function GuardsView() {
           loading={loading}
         />
         <StatCard
-          label="Check-ins today"
-          value={checkInsToday}
-          icon={LogIn}
-          tone="accent"
-          loading={loading}
-        />
-        <StatCard
-          label="Pending registrations"
+          label="Pending requests"
           value={pendingCount}
           icon={Clock}
           tone={pendingCount > 0 ? "warning" : "default"}
           loading={loading}
         />
+        <StatCard
+          label="Suspended guards"
+          value={rows?.filter((r) => r.guard.status === "Suspended").length ?? 0}
+          icon={ShieldAlert}
+          tone={(rows?.filter((r) => r.guard.status === "Suspended").length ?? 0) > 0 ? "destructive" : "default"}
+          loading={loading}
+        />
       </div>
 
-      <Tabs defaultValue="roster">
-        <TabsList>
-          <TabsTrigger value="roster">Guard Roster</TabsTrigger>
-          <TabsTrigger value="registrations">
-            Pending Registrations
+      <Tabs defaultValue="pending">
+        <TabsList className="grid w-full grid-cols-2 md:grid-cols-4">
+          <TabsTrigger value="pending">
+            Pending Requests
             {pendingCount > 0 && (
               <span className="ml-1.5 rounded-full bg-warning/20 px-1.5 text-[10px] font-bold text-warning">
                 {pendingCount}
               </span>
             )}
           </TabsTrigger>
+          <TabsTrigger value="approved">
+            Approved Guards ({rows?.filter((r) => r.guard.status !== "Suspended").length ?? 0})
+          </TabsTrigger>
+          <TabsTrigger value="rejected">Rejected Requests</TabsTrigger>
+          <TabsTrigger value="suspended">
+            Suspended ({rows?.filter((r) => r.guard.status === "Suspended").length ?? 0})
+          </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="roster" className="mt-4">
+        <TabsContent value="pending" className="mt-4">
+          <Card>
+            <div className="p-4">
+              <h2 className="mb-1 text-sm font-semibold">Guard Registration Requests</h2>
+              <p className="mb-4 text-xs text-muted-foreground">
+                Review and approve or reject guard account registration requests. Approved requests create a guard record, activate their login account, and dispatch an activation email.
+              </p>
+              <GuardRegistrationsList
+                filterStatus="PENDING"
+                onRefresh={() => {
+                  setRegRefresh((n) => n + 1);
+                  api.guards().then(setRows).catch(() => {});
+                }}
+              />
+            </div>
+          </Card>
+        </TabsContent>
 
+        <TabsContent value="approved" className="mt-4">
           <Card>
             <FilterBar
               search={search}
               onSearchChange={setSearch}
               searchPlaceholder="Search name, employee ID or gate…"
-              resultCount={filtered.length}
-              totalCount={rows?.length ?? 0}
+              resultCount={filtered.filter((r) => r.guard.status !== "Suspended").length}
+              totalCount={rows?.filter((r) => r.guard.status !== "Suspended").length ?? 0}
               isFiltered={search !== "" || gate !== "all" || shift !== "all" || status !== "all"}
               onReset={() => {
                 setSearch("");
@@ -220,135 +267,210 @@ function GuardsView() {
                   ],
                   className: "min-w-[150px]",
                 },
-                {
-                  id: "guard-status",
-                  label: "Status",
-                  value: status,
-                  onChange: setStatus,
-                  options: [
-                    { value: "all", label: "All statuses" },
-                    ...GUARD_STATUSES.map((s) => ({ value: s, label: s })),
-                  ],
-                  className: "min-w-[160px]",
-                },
               ]}
             />
 
             <div className="p-4">
               {loading ? (
                 <CardsLoadingState count={6} />
-              ) : filtered.length === 0 ? (
+              ) : filtered.filter((r) => r.guard.status !== "Suspended").length === 0 ? (
                 <EmptyState
                   icon={ShieldCheck}
-                  title="No guards match this search"
-                  description="Clear the filters to see the full roster."
+                  title="No approved guards match this search"
+                  description="Clear the filters to see the full approved roster."
                 />
               ) : (
                 <ul className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
-                  {filtered.map(({ guard, today }) => (
-                    <li key={guard.id}>
-                      <article className="flex h-full flex-col rounded-lg border border-border bg-card p-4 shadow-xs transition-shadow hover:shadow-md">
-                        <header className="flex items-start gap-3">
-                          <span
-                            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary"
-                            aria-hidden
-                          >
-                            {initials(guard.fullName)}
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <h3 className="truncate text-sm font-semibold">{guard.fullName}</h3>
-                            <p className="truncate font-mono text-xs text-muted-foreground">
-                              {guard.employeeId}
-                            </p>
-                            <p className="truncate text-xs text-muted-foreground">
-                              {guard.shift} · {guard.shiftStart}–{guard.shiftEnd}
-                            </p>
-                          </div>
-                          <Badge variant={statusTone[guard.status] ?? "secondary"}>
-                            {guard.status}
-                          </Badge>
-                        </header>
-
-                        <dl className="mt-4 space-y-1.5 text-xs text-muted-foreground">
-                          <div className="flex items-center gap-2">
-                            <DoorOpen className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                            <dd className="truncate font-medium text-foreground">
-                              {guard.assignedGate}
-                            </dd>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Phone className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                            <dd className="font-mono">{guard.phone}</dd>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Mail className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                            <dd className="truncate">{guard.email || "—"}</dd>
-                          </div>
-                        </dl>
-
-                        <div className="mt-4 grid grid-cols-3 gap-2 border-t border-border pt-3 text-center">
-                          {[
-                            { label: "In", value: today.checkIns, icon: LogIn },
-                            { label: "Out", value: today.checkOuts, icon: LogOut },
-                            { label: "Incidents", value: today.incidentsReported, icon: AlertTriangle },
-                          ].map((stat) => (
-                            <div key={stat.label}>
-                              <p className="text-base font-semibold tabular-nums">{stat.value}</p>
-                              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                                {stat.label}
+                  {filtered
+                    .filter((r) => r.guard.status !== "Suspended")
+                    .map(({ guard, today }) => (
+                      <li key={guard.id}>
+                        <article className="flex h-full flex-col rounded-lg border border-border bg-card p-4 shadow-xs transition-shadow hover:shadow-md">
+                          <header className="flex items-start gap-3">
+                            <span
+                              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary"
+                              aria-hidden
+                            >
+                              {initials(guard.fullName)}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <h3 className="truncate text-sm font-semibold">{guard.fullName}</h3>
+                              <p className="truncate font-mono text-xs text-muted-foreground">
+                                {guard.employeeId}
+                              </p>
+                              <p className="truncate text-xs text-muted-foreground">
+                                {guard.shift} · {guard.shiftStart}–{guard.shiftEnd}
                               </p>
                             </div>
-                          ))}
-                        </div>
+                            <Badge variant={statusTone[guard.status] ?? "secondary"}>
+                              {guard.status}
+                            </Badge>
+                          </header>
 
-                        <p className="mt-2 text-center text-[11px] text-muted-foreground">
-                          Last activity:{" "}
-                          {today.lastActivityAt ? formatDateTime(today.lastActivityAt) : "None today"}
-                        </p>
+                          <dl className="mt-4 space-y-1.5 text-xs text-muted-foreground">
+                            <div className="flex items-center gap-2">
+                              <DoorOpen className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                              <dd className="truncate font-medium text-foreground">
+                                {guard.assignedGate}
+                              </dd>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Phone className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                              <dd className="font-mono">{guard.phone}</dd>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Mail className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                              <dd className="truncate">{guard.email || "—"}</dd>
+                            </div>
+                          </dl>
 
-                        <div className="mt-3 flex gap-2">
-                          <Button asChild variant="outline" size="sm" className="flex-1">
-                            <Link href={`/admin/guards/${guard.id}`}>
-                              <UserRound className="h-3.5 w-3.5" />
-                              Profile
-                            </Link>
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setScheduleGuard(guard)}
-                            title="Manage schedule"
-                          >
-                            <CalendarDays className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              setEditing(guard);
-                              setDialogOpen(true);
-                            }}
-                          >
-                            Edit
-                          </Button>
-                        </div>
-                      </article>
-                    </li>
-                  ))}
+                          <div className="mt-4 grid grid-cols-3 gap-2 border-t border-border pt-3 text-center">
+                            {[
+                              { label: "In", value: today.checkIns, icon: LogIn },
+                              { label: "Out", value: today.checkOuts, icon: LogOut },
+                              { label: "Incidents", value: today.incidentsReported, icon: AlertTriangle },
+                            ].map((stat) => (
+                              <div key={stat.label}>
+                                <p className="text-base font-semibold tabular-nums">{stat.value}</p>
+                                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                                  {stat.label}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+
+                          <p className="mt-2 text-center text-[11px] text-muted-foreground">
+                            Last activity:{" "}
+                            {today.lastActivityAt ? formatDateTime(today.lastActivityAt) : "None today"}
+                          </p>
+
+                          <div className="mt-3 flex gap-2">
+                            <Button asChild variant="outline" size="sm" className="flex-1">
+                              <Link href={`/admin/guards/${guard.id}`}>
+                                <UserRound className="h-3.5 w-3.5" />
+                                Profile
+                              </Link>
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setScheduleGuard(guard)}
+                              title="Manage schedule"
+                            >
+                              <CalendarDays className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setEditing(guard);
+                                setDialogOpen(true);
+                              }}
+                            >
+                              Edit
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => void handleToggleSuspend(guard)}
+                              title="Suspend guard"
+                            >
+                              Suspend
+                            </Button>
+                          </div>
+                        </article>
+                      </li>
+                    ))}
                 </ul>
               )}
             </div>
           </Card>
         </TabsContent>
 
-        <TabsContent value="registrations" className="mt-4">
+        <TabsContent value="rejected" className="mt-4">
           <Card>
             <div className="p-4">
-              <h2 className="mb-1 text-sm font-semibold">Guard Registration Requests</h2>
+              <h2 className="mb-1 text-sm font-semibold">Rejected Guard Requests</h2>
               <p className="mb-4 text-xs text-muted-foreground">
-                Review and approve or reject guard account registration requests. Approved requests create a guard record and activate the account.
+                History of guard registration requests that were declined by administrators.
               </p>
-              <GuardRegistrationsList onRefresh={() => setRegRefresh((n) => n + 1)} />
+              <GuardRegistrationsList
+                filterStatus="REJECTED"
+                onRefresh={() => {
+                  setRegRefresh((n) => n + 1);
+                  api.guards().then(setRows).catch(() => {});
+                }}
+              />
+            </div>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="suspended" className="mt-4">
+          <Card>
+            <div className="p-4">
+              <h2 className="mb-1 text-sm font-semibold">Suspended Guard Accounts</h2>
+              <p className="mb-4 text-xs text-muted-foreground">
+                Guards whose duty permissions and login credentials have been revoked. Click &apos;Re-activate&apos; to restore full access.
+              </p>
+              {rows?.filter((r) => r.guard.status === "Suspended").length === 0 ? (
+                <EmptyState
+                  icon={ShieldCheck}
+                  title="No suspended guards"
+                  description="All rostered guards are active or off duty."
+                />
+              ) : (
+                <ul className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+                  {rows
+                    ?.filter((r) => r.guard.status === "Suspended")
+                    .map(({ guard, today }) => (
+                      <li key={guard.id}>
+                        <article className="flex h-full flex-col rounded-lg border border-destructive/30 bg-card p-4 shadow-xs">
+                          <header className="flex items-start gap-3">
+                            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-destructive/10 text-sm font-semibold text-destructive">
+                              {initials(guard.fullName)}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <h3 className="truncate text-sm font-semibold">{guard.fullName}</h3>
+                              <p className="truncate font-mono text-xs text-muted-foreground">
+                                {guard.employeeId}
+                              </p>
+                              <p className="truncate text-xs text-muted-foreground">
+                                Gate: {guard.assignedGate}
+                              </p>
+                            </div>
+                            <Badge variant="destructive">Suspended</Badge>
+                          </header>
+                          <dl className="mt-4 space-y-1.5 text-xs text-muted-foreground">
+                            <div className="flex items-center gap-2">
+                              <Phone className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                              <dd className="font-mono">{guard.phone}</dd>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Mail className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                              <dd className="truncate">{guard.email || "—"}</dd>
+                            </div>
+                          </dl>
+                          <div className="mt-4 flex gap-2 border-t border-border pt-3">
+                            <Button asChild variant="outline" size="sm" className="flex-1">
+                              <Link href={`/admin/guards/${guard.id}`}>
+                                <UserRound className="h-3.5 w-3.5" />
+                                Profile
+                              </Link>
+                            </Button>
+                            <Button
+                              variant="default"
+                              size="sm"
+                              className="flex-1"
+                              onClick={() => void handleToggleSuspend(guard)}
+                            >
+                              Re-activate
+                            </Button>
+                          </div>
+                        </article>
+                      </li>
+                    ))}
+                </ul>
+              )}
             </div>
           </Card>
         </TabsContent>

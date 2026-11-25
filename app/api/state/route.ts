@@ -1,8 +1,7 @@
-import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
 import { bootstrap } from "@/lib/server/http";
-import { currentSession, SESSION_COOKIE } from "@/lib/server/auth";
+import { currentSession } from "@/lib/server/auth";
 import { buildSnapshot } from "@/lib/server/services/snapshot";
 
 export const runtime = "nodejs";
@@ -19,21 +18,13 @@ export async function GET() {
   bootstrap();
   const session = await currentSession();
 
-  // If no valid session but a stale session cookie was sent, clear it immediately
-  // to prevent client-side redirect loops in middleware and shells.
-  if (!session) {
-    try {
-      const store = await cookies();
-      if (store.has(SESSION_COOKIE)) {
-        store.delete(SESSION_COOKIE);
-      }
-      if (store.has("csms_role")) {
-        store.delete("csms_role");
-      }
-    } catch {
-      // ignore if cookies cannot be modified in context
-    }
-  }
+  // NOTE: Do NOT delete cookies here even when session is null.
+  // The sessionForToken() function already handles expired/invalid tokens gracefully.
+  // Deleting cookies from an API route causes redirect loops because:
+  // 1. Middleware reads csms_session and csms_role to allow the request through.
+  // 2. If the state route deletes them, the client becomes unauthenticated.
+  // 3. AdminShell fires window.location.replace → infinite redirect.
+  // Cookie cleanup happens only during explicit sign-out (/api/auth/logout).
 
   return NextResponse.json({
     ok: true,

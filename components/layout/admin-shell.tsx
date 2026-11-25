@@ -51,11 +51,10 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         document.cookie = "csms_role=; path=/; max-age=0;";
       }
       const target = `/admin/login?next=${encodeURIComponent(pathname)}`;
-      if (typeof window !== "undefined") {
-        window.location.replace(target);
-      } else {
-        router.replace(target);
-      }
+      // Use router.replace instead of window.location.replace to avoid a full
+      // page reload which re-mounts the shell and re-triggers this effect,
+      // creating a visible redirect loop.
+      router.replace(target);
     } else if (!permitted) {
       router.replace(HOME_FOR_ROLE[session.role] ?? "/");
     }

@@ -33,18 +33,20 @@ interface GuardRegistration {
   email: string;
   phone: string;
   employee_id: string;
+  designation?: string;
   address: string;
   emergency_contact: string;
   joining_date: string | null;
   shift: string;
   assigned_gate: string;
   notes: string | null;
-  status: "Pending" | "Approved" | "Rejected";
+  status: "Pending" | "PENDING" | "Approved" | "APPROVED" | "Rejected" | "REJECTED" | "Suspended" | "SUSPENDED";
   reviewed_by: string | null;
   reviewed_at: string | null;
   admin_remarks: string | null;
+  rejection_reason?: string | null;
   created_at: string;
-  updated_at: string;
+  updated_at?: string;
 }
 
 interface ApprovalDialogProps {
@@ -59,8 +61,13 @@ const statusVariant: Record<
   "success" | "warning" | "destructive" | "secondary"
 > = {
   Pending: "warning",
+  PENDING: "warning",
   Approved: "success",
+  APPROVED: "success",
   Rejected: "destructive",
+  REJECTED: "destructive",
+  Suspended: "destructive",
+  SUSPENDED: "destructive",
 };
 
 export function GuardApprovalDialog({
@@ -106,7 +113,7 @@ export function GuardApprovalDialog({
     }
   }
 
-  const isPending = registration.status === "Pending";
+  const isPending = registration.status.toUpperCase() === "PENDING";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -280,7 +287,13 @@ export function GuardApprovalDialog({
  * Standalone panel that lists all pending guard registrations.
  * Embedded in the admin guard management page.
  */
-export function GuardRegistrationsList({ onRefresh }: { onRefresh?: () => void }) {
+export function GuardRegistrationsList({
+  filterStatus = "all",
+  onRefresh,
+}: {
+  filterStatus?: "PENDING" | "APPROVED" | "REJECTED" | "SUSPENDED" | "all";
+  onRefresh?: () => void;
+}) {
   const [registrations, setRegistrations] = React.useState<GuardRegistration[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [selected, setSelected] = React.useState<GuardRegistration | null>(null);
@@ -300,90 +313,82 @@ export function GuardRegistrationsList({ onRefresh }: { onRefresh?: () => void }
     fetchRegistrations();
   }, [fetchRegistrations]);
 
-  const pending = registrations.filter((r) => r.status === "Pending");
-  const decided = registrations.filter((r) => r.status !== "Pending");
+  const items = React.useMemo(() => {
+    if (filterStatus === "all") return registrations;
+    return registrations.filter((r) => r.status.toUpperCase() === filterStatus.toUpperCase());
+  }, [registrations, filterStatus]);
 
   if (loading) return <InlineLoader label="Loading registrations…" />;
 
+  if (items.length === 0) {
+    return (
+      <EmptyState
+        icon={Clock}
+        title={
+          filterStatus === "PENDING"
+            ? "No pending registration requests"
+            : filterStatus === "REJECTED"
+            ? "No rejected registration requests"
+            : filterStatus === "SUSPENDED"
+            ? "No suspended guard records"
+            : "No guard registrations"
+        }
+        description={
+          filterStatus === "PENDING"
+            ? "All submitted guard registration requests have been processed."
+            : "Registration requests will appear here once processed."
+        }
+      />
+    );
+  }
+
   return (
     <div className="space-y-4">
-      {pending.length === 0 && decided.length === 0 ? (
-        <EmptyState
-          icon={Clock}
-          title="No guard registrations"
-          description="Guard registration requests will appear here when submitted."
-        />
-      ) : (
-        <>
-          {pending.length > 0 && (
-            <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Pending ({pending.length})
-              </p>
-              <ul className="space-y-2">
-                {pending.map((reg) => (
-                  <li
-                    key={reg.id}
-                    className="flex items-center justify-between rounded-lg border border-border bg-card px-4 py-3"
-                  >
-                    <div>
-                      <p className="text-sm font-semibold">{reg.full_name}</p>
-                      <p className="text-xs text-muted-foreground">{reg.email}</p>
-                      <p className="text-xs text-muted-foreground">
-                        Submitted {formatDateTime(reg.created_at)}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="warning">Pending</Badge>
-                      <Button
-                        size="sm"
-                        onClick={() => setSelected(reg)}
-                        id={`review-reg-${reg.id}`}
-                      >
-                        Review
-                      </Button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {decided.length > 0 && (
-            <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Decided ({decided.length})
-              </p>
-              <ul className="space-y-2">
-                {decided.map((reg) => (
-                  <li
-                    key={reg.id}
-                    className="flex items-center justify-between rounded-lg border border-border bg-card px-4 py-3 opacity-75"
-                  >
-                    <div>
-                      <p className="text-sm font-semibold">{reg.full_name}</p>
-                      <p className="text-xs text-muted-foreground">{reg.email}</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge
-                        variant={statusVariant[reg.status] ?? "secondary"}
-                      >
-                        {reg.status}
-                      </Badge>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setSelected(reg)}
-                      >
-                        View
-                      </Button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </>
-      )}
+      <ul className="space-y-2">
+        {items.map((reg) => {
+          const isPendingItem = reg.status.toUpperCase() === "PENDING";
+          return (
+            <li
+              key={reg.id}
+              className="flex items-center justify-between rounded-lg border border-border bg-card px-4 py-3 shadow-xs"
+            >
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-semibold">{reg.full_name}</p>
+                  <Badge variant="secondary" className="font-mono text-[10px]">
+                    {reg.employee_id}
+                  </Badge>
+                  {reg.designation && (
+                    <span className="text-xs text-muted-foreground">· {reg.designation}</span>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">{reg.email} · {reg.phone || "No phone"}</p>
+                <p className="text-xs text-muted-foreground">
+                  Gate: <span className="font-medium text-foreground">{reg.assigned_gate || "Main Gate"}</span> · Submitted {formatDateTime(reg.created_at)}
+                </p>
+                {reg.admin_remarks && (
+                  <p className="text-xs text-destructive">
+                    Reason: {reg.admin_remarks}
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge variant={statusVariant[reg.status] ?? "secondary"}>
+                  {reg.status}
+                </Badge>
+                <Button
+                  size="sm"
+                  variant={isPendingItem ? "default" : "outline"}
+                  onClick={() => setSelected(reg)}
+                  id={`review-reg-${reg.id}`}
+                >
+                  {isPendingItem ? "Review" : "View"}
+                </Button>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
 
       {selected && (
         <GuardApprovalDialog

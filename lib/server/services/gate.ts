@@ -18,7 +18,7 @@ import { all } from "../db";
 import { mapVisit } from "../repo";
 import { notificationService } from "../notification-service";
 import { isSupabaseConfigured } from "@/lib/supabase";
-import { persistSecondaryToSupabase, persistToSupabase } from "../supabase-db";
+import { isNetworkError, persistSecondaryToSupabase, persistToSupabase } from "../supabase-db";
 
 /**
  * Gate operations.
@@ -345,8 +345,10 @@ export async function checkIn(
         updated_at: updated.updatedAt,
       }, "update");
     } catch (err) {
-      console.error(`[gate] Supabase persistence failed for checkIn ${updated.id}:`, err);
-      throw new AppError("Failed to record check-in in database.", 500, "database_persistence_failed");
+      if (!isNetworkError(err)) {
+        console.error(`[gate] Supabase persistence failed for checkIn ${updated.id}:`, err);
+        throw new AppError("Failed to record check-in in database.", 500, "database_persistence_failed");
+      }
     }
   }
 
@@ -460,8 +462,10 @@ export async function checkOut(
         updated_at: updated.updatedAt,
       }, "update");
     } catch (err) {
-      console.error(`[gate] Supabase persistence failed for checkOut ${updated.id}:`, err);
-      throw new AppError("Failed to record check-out in database.", 500, "database_persistence_failed");
+      if (!isNetworkError(err)) {
+        console.error(`[gate] Supabase persistence failed for checkOut ${updated.id}:`, err);
+        throw new AppError("Failed to record check-out in database.", 500, "database_persistence_failed");
+      }
     }
   }
 

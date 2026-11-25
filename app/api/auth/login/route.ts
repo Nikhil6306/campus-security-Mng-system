@@ -68,7 +68,12 @@ export async function POST(request: Request) {
       maxAge: 12 * 60 * 60,
     });
 
-    return NextResponse.json({ ok: true, data: session, state: buildSnapshot(session) });
+    return NextResponse.json({
+      ok: true,
+      data: { ...session, token },
+      token,
+      state: buildSnapshot(session),
+    });
   } catch (error) {
     if (error instanceof AuthError) {
       return NextResponse.json(

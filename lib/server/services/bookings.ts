@@ -24,6 +24,7 @@ import {
 import { isSupabaseConfigured } from "@/lib/supabase";
 import {
   findSupabaseVisitorByMobile,
+  isNetworkError,
   persistToSupabase,
 } from "../supabase-db";
 import { sealAadhaar } from "../aadhaar";
@@ -611,23 +612,29 @@ export async function createBooking(
         }
       }
     } catch (supabaseErr) {
-      const errorMsg =
-        supabaseErr && typeof supabaseErr === "object" && "message" in supabaseErr
-          ? (supabaseErr as { message: string }).message
-          : String(supabaseErr);
-      console.error(`[bookings] Critical Supabase persistence failed for booking ${booking.id}:`, errorMsg);
-      // Clean up the local booking to prevent corrupt/locked state
-      try {
-        run("DELETE FROM visit_guests WHERE booking_id = ?", [booking.id]);
-        run("DELETE FROM visit_requests WHERE id = ?", [booking.id]);
-      } catch (cleanupErr) {
-        console.error(`[bookings] Failed to clean up local booking ${booking.id}:`, cleanupErr);
+      if (isNetworkError(supabaseErr)) {
+        console.warn(
+          `[bookings] Supabase unreachable for booking ${booking.id}. Local SQLite booking successfully preserved and queued for cloud sync.`,
+        );
+      } else {
+        const errorMsg =
+          supabaseErr && typeof supabaseErr === "object" && "message" in supabaseErr
+            ? (supabaseErr as { message: string }).message
+            : String(supabaseErr);
+        console.error(`[bookings] Critical Supabase persistence failed for booking ${booking.id}:`, errorMsg);
+        // Clean up the local booking to prevent corrupt/locked state on definitive database schema or constraint errors
+        try {
+          run("DELETE FROM visit_guests WHERE booking_id = ?", [booking.id]);
+          run("DELETE FROM visit_requests WHERE id = ?", [booking.id]);
+        } catch (cleanupErr) {
+          console.error(`[bookings] Failed to clean up local booking ${booking.id}:`, cleanupErr);
+        }
+        throw new AppError(
+          "Database persistence failed. Your booking could not be saved. Please try again.",
+          500,
+          "database_persistence_failed",
+        );
       }
-      throw new AppError(
-        "Database persistence failed. Your booking could not be saved. Please try again.",
-        500,
-        "database_persistence_failed",
-      );
     }
   }
 
@@ -756,8 +763,10 @@ export async function approveBooking(id: string, actor: AuthSession): Promise<Vi
         updated_at: updated.updatedAt,
       }, "update");
     } catch (err) {
-      console.error(`[bookings] Supabase persistence failed for approveBooking ${updated.id}:`, err);
-      throw new AppError("Failed to update booking status in database.", 500, "database_persistence_failed");
+      if (!isNetworkError(err)) {
+        console.error(`[bookings] Supabase persistence failed for approveBooking ${updated.id}:`, err);
+        throw new AppError("Failed to update booking status in database.", 500, "database_persistence_failed");
+      }
     }
   }
 
@@ -810,8 +819,10 @@ export async function rejectBooking(id: string, reason: string, actor: AuthSessi
         updated_at: updated.updatedAt,
       }, "update");
     } catch (err) {
-      console.error(`[bookings] Supabase persistence failed for rejectBooking ${updated.id}:`, err);
-      throw new AppError("Failed to update booking status in database.", 500, "database_persistence_failed");
+      if (!isNetworkError(err)) {
+        console.error(`[bookings] Supabase persistence failed for rejectBooking ${updated.id}:`, err);
+        throw new AppError("Failed to update booking status in database.", 500, "database_persistence_failed");
+      }
     }
   }
 
@@ -903,8 +914,10 @@ export async function rescheduleBooking(
         updated_at: updated.updatedAt,
       }, "update");
     } catch (err) {
-      console.error(`[bookings] Supabase persistence failed for rescheduleBooking ${updated.id}:`, err);
-      throw new AppError("Failed to update booking date/time in database.", 500, "database_persistence_failed");
+      if (!isNetworkError(err)) {
+        console.error(`[bookings] Supabase persistence failed for rescheduleBooking ${updated.id}:`, err);
+        throw new AppError("Failed to update booking date/time in database.", 500, "database_persistence_failed");
+      }
     }
   }
 
@@ -949,8 +962,10 @@ export async function cancelBooking(id: string, actor: Actor, reason?: string): 
         updated_at: updated.updatedAt,
       }, "update");
     } catch (err) {
-      console.error(`[bookings] Supabase persistence failed for cancelBooking ${updated.id}:`, err);
-      throw new AppError("Failed to cancel booking in database.", 500, "database_persistence_failed");
+      if (!isNetworkError(err)) {
+        console.error(`[bookings] Supabase persistence failed for cancelBooking ${updated.id}:`, err);
+        throw new AppError("Failed to cancel booking in database.", 500, "database_persistence_failed");
+      }
     }
   }
 
@@ -988,8 +1003,10 @@ export async function markNoShow(id: string, actor: AuthSession): Promise<VisitR
         updated_at: updated.updatedAt,
       }, "update");
     } catch (err) {
-      console.error(`[bookings] Supabase persistence failed for markNoShow ${updated.id}:`, err);
-      throw new AppError("Failed to record no-show in database.", 500, "database_persistence_failed");
+      if (!isNetworkError(err)) {
+        console.error(`[bookings] Supabase persistence failed for markNoShow ${updated.id}:`, err);
+        throw new AppError("Failed to record no-show in database.", 500, "database_persistence_failed");
+      }
     }
   }
 
@@ -1034,8 +1051,10 @@ export async function startMeeting(id: string, actor: AuthSession): Promise<Visi
         updated_at: updated.updatedAt,
       }, "update");
     } catch (err) {
-      console.error(`[bookings] Supabase persistence failed for startMeeting ${updated.id}:`, err);
-      throw new AppError("Failed to update meeting status in database.", 500, "database_persistence_failed");
+      if (!isNetworkError(err)) {
+        console.error(`[bookings] Supabase persistence failed for startMeeting ${updated.id}:`, err);
+        throw new AppError("Failed to update meeting status in database.", 500, "database_persistence_failed");
+      }
     }
   }
 
@@ -1079,8 +1098,10 @@ export async function completeMeeting(id: string, actor: AuthSession): Promise<V
         updated_at: updated.updatedAt,
       }, "update");
     } catch (err) {
-      console.error(`[bookings] Supabase persistence failed for completeMeeting ${updated.id}:`, err);
-      throw new AppError("Failed to update meeting status in database.", 500, "database_persistence_failed");
+      if (!isNetworkError(err)) {
+        console.error(`[bookings] Supabase persistence failed for completeMeeting ${updated.id}:`, err);
+        throw new AppError("Failed to update meeting status in database.", 500, "database_persistence_failed");
+      }
     }
   }
 

@@ -38,7 +38,6 @@ const DB_PATH = resolve(process.env.DATABASE_FILE ?? defaultDbPath);
 const POSTGRES_URL =
   process.env.SUPABASE_DB_URL?.trim() || process.env.DATABASE_URL?.trim();
 export const databaseDriver: DatabaseDriver =
-  process.env.VERCEL ||
   configuredDriver === "postgres" ||
   (configuredDriver !== "sqlite" && Boolean(POSTGRES_URL))
     ? "postgres"

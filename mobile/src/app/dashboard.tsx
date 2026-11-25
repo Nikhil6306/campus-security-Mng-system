@@ -27,6 +27,7 @@ import {
   logoutGuard,
   startGuardShift,
   endGuardShift,
+  syncOfflineGateActions,
   type GuardDashboardData,
   type GuardSession,
 } from '@/services/api';
@@ -48,6 +49,9 @@ export default function DashboardScreen() {
     try {
       const current = getGuardSession();
       setSession(current);
+
+      // Opportunistically drain any pending offline gate actions
+      void syncOfflineGateActions().catch(() => {});
 
       const [data, recentLogs, storedSessionId] = await Promise.all([
         getGuardDashboardData(),
@@ -161,10 +165,12 @@ export default function DashboardScreen() {
   ];
 
   const actions = [
-    { title: 'Scan visitor QR', caption: 'Verify visitor or outpass', icon: QrCode, route: '/scan' },
+    { title: 'Scan visitor QR', caption: 'Verify pass with camera scanner', icon: QrCode, route: '/scan' },
     { title: 'New check-in', caption: 'Register walk-in guest', icon: UserRoundPlus, route: '/check-in' },
     { title: 'Check-out', caption: 'Record gate exit', icon: DoorOpen, route: '/check-out' },
-    { title: 'Emergency SOS', caption: 'Dispatch campus alert', icon: Siren, route: '/emergency' },
+    { title: 'Visitor logs & history', caption: 'Search & view pass records', icon: ClipboardCheck, route: '/history' },
+    { title: 'Security alerts', caption: 'Campus incidents & alerts', icon: Bell, route: '/notifications' },
+    { title: 'Emergency SOS', caption: 'Dispatch urgent campus alert', icon: Siren, route: '/emergency' },
   ] as const;
 
   const guardName = session?.name || 'Security Officer';

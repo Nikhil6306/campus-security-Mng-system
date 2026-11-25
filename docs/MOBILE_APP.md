@@ -55,8 +55,9 @@ graph TD
 The mobile navigation is organized under `mobile/src/app/`:
 
 1. **Guard Login (`login.tsx`):**
-   * Guard signs in using email (`security@dsvv.edu.in`) and password (`Security@123`).
+   * Guard signs in using registered email and approved password (or taps **Register New Guard** to request approval).
    * Validates guard credentials against `/api/auth/login` with `expectedRole: "security"`.
+   * Displays immediate status feedback if account is `PENDING`, `REJECTED`, or `SUSPENDED`.
    * Securely caches user token and gate assignment in local storage.
 2. **Guard Dashboard (`dashboard.tsx`):**
    * Displays currently assigned gate (e.g., Main Gate) and active shift time.
@@ -167,6 +168,4 @@ The resulting installable `.apk` link will be output directly in the console.
 6. Grant required runtime permissions:
    * **Camera:** Required for scanning visitor QR passes.
    * **Network / Internet:** Required for validating passes against the campus database.
-7. Sign in using security guard credentials:
-   * **Email:** `security@dsvv.edu.in`
-   * **Password:** `Security@123`
+7. Sign in using approved guard credentials or complete the registration form for administrator review.

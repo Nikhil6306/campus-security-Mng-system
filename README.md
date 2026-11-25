@@ -278,8 +278,8 @@ NEXT_PUBLIC_SUPABASE_URL=https://qpamgfhggxwctoibmsbl.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key_here
 SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key_here
 
-# Local Development Settings
-DEMO_ACCOUNT_PASSWORD=Admin@123
+# Local Development Settings (Optional, strictly disabled in production)
+DEMO_ACCOUNT_PASSWORD=your_local_development_password
 DATABASE_DRIVER=sqlite
 DATABASE_FILE=.data/campus-security.db
 
@@ -319,18 +319,18 @@ npm start
 
 Open [http://localhost:3000](http://localhost:3000) in your browser. The local database will be automatically created and seeded on the first request!
 
-### Development Demo Accounts
+### Role Authentication & Provisioning
 
 | Role | Email | Password | Dedicated Login URL |
 | :--- | :--- | :--- | :--- |
-| **Super Admin** | `superadmin@dsvv.edu.in` | `Super@123` *(or `Admin@123`)* | `/super-admin/login` |
-| **Super Admin (Owner)** | `nikhilshukla1200@gmail.com` | `Admin@123` | `/super-admin/login` |
-| **Admin** | `admin@dsvv.edu.in` | `Admin@123` | `/admin/login` |
-| **Security Guard** | `security@dsvv.edu.in` | `Security@123` *(or `Admin@123`)* | `/security/login` |
-| **Faculty / Host** | `rajeshwari.trivedi@dsvv.ac.in` | `Teacher@123` *(or `Admin@123`)* | `/teacher` |
-| **Student** | `aarav.mehta@dsvv.edu.in` | `Student@123` *(or `Admin@123`)* | `/login` |
+| **Super Admin** | `superadmin@dsvv.edu.in` | *Configured via Environment / Provisioned* | `/super-admin/login` |
+| **Super Admin (Owner)** | `nikhilshukla1200@gmail.com` | *Configured via Environment / Provisioned* | `/super-admin/login` |
+| **Admin** | `admin@dsvv.edu.in` | *Configured via Environment / Provisioned* | `/admin/login` |
+| **Security Guard** | `security@dsvv.edu.in` | *Admin Approved & Provisioned* | `/security/login` |
+| **Faculty / Host** | `rajeshwari.trivedi@dsvv.ac.in` | *Provisioned by Institution* | `/teacher` |
+| **Student** | `aarav.mehta@dsvv.edu.in` | *Provisioned by Institution* | `/login` |
 
-*Note: If `DEMO_ACCOUNT_PASSWORD=Admin@123` is set in `.env.local`, all demo accounts authenticate with `Admin@123`.*
+*Security Notice: In development/local environments only, administrators can set `DEMO_ACCOUNT_PASSWORD` in `.env.local` for testing. In production environments, demonstration bypasses are strictly disabled and accounts must use their securely hashed database credentials.*
 
 ---
 

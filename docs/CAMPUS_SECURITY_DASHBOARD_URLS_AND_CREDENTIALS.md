@@ -197,54 +197,54 @@ CSMS is a Next.js 14 (App Router) web application backed by:
 ## 4. Demo Login Credentials
 
 > [!CAUTION]
-> **Development use only.** These accounts and passwords are seeded into the local SQLite database. Do not use in production. Rotate before launch.
-
-The global demo password override can be set in `.env.local`:
-```
-DEMO_ACCOUNT_PASSWORD=Admin@123
-```
-When this is set, **all demo accounts use `Admin@123`** as their password.  
-When it is NOT set, each account uses its individual default password listed below.
+> **Development & Production Provisioning Notice:** Accounts are provisioned through administrative workflows or database seeding. Never hardcode passwords in production environments.
+> In local development environments only, an optional override can be set in `.env.local`:
+> ```
+> DEMO_ACCOUNT_PASSWORD=<your_local_dev_password>
+> ```
+> In production environments (`NODE_ENV=production`), `DEMO_ACCOUNT_PASSWORD` bypass is strictly disabled at the engine level. All users must authenticate using their secure credentials, or register via dedicated onboarding portals (e.g. Guard Registration with Admin Approval).
 
 ### 4.1 Administrator Accounts
 
-| Role | Name | Email | Default Password | Login URL |
+| Role | Name | Email | Password Policy | Login URL |
 |------|------|-------|-----------------|-----------|
-| **Super Admin** | Campus Security Director | `superadmin@dsvv.edu.in` | `Super@123` | `/super-admin/login` |
-| **Super Admin** | Nikhil Shukla *(project owner)* | `nikhilshukla1200@gmail.com` | `Admin@123` | `/super-admin/login` |
-| **Admin** | Security Administrator | `admin@dsvv.edu.in` | `Admin@123` | `/admin/login` |
+| **Super Admin** | Campus Security Director | `superadmin@dsvv.edu.in` | Environment / Provisioned | `/super-admin/login` |
+| **Super Admin** | Nikhil Shukla *(project owner)* | `nikhilshukla1200@gmail.com` | Environment / Provisioned | `/super-admin/login` |
+| **Admin** | Security Administrator | `admin@dsvv.edu.in` | Environment / Provisioned | `/admin/login` |
 
 > **Note:** Migration `0009_admin_email_restriction.sql` restricts Supabase `admin` role assignment to `nikhilshukla1200@gmail.com`. Other admin accounts operate via SQLite fallback auth.
 
 ### 4.2 Security Guard Accounts
 
-| ID | Name | Email | Gate | Default Password | Login URL |
-|----|------|-------|------|-----------------|-----------|
-| GRD-001 | Amit Kumar | `security@dsvv.edu.in` | Main Gate | `Security@123` | `/security/login` |
-| GRD-002 | Sunil Thapa | `sunil.thapa@dsvv.edu.in` | Main Gate | `Security@123` | `/security/login` |
-| GRD-004 | Pooja Rawat | `pooja.rawat@dsvv.edu.in` | Hostel Gate | `Security@123` | `/security/login` |
+| ID | Name | Email | Gate | Account Status | Login URL |
+|----|------|-------|------|----------------|-----------|
+| GRD-001 | Amit Kumar | `security@dsvv.edu.in` | Main Gate | Active / Provisioned | `/security/login` |
+| GRD-002 | Sunil Thapa | `sunil.thapa@dsvv.edu.in` | Main Gate | Active / Provisioned | `/security/login` |
+| GRD-004 | Pooja Rawat | `pooja.rawat@dsvv.edu.in` | Hostel Gate | Active / Provisioned | `/security/login` |
+
+*New security guards register via the mobile app or web portal and require administrator approval before logging in.*
 
 ### 4.3 Teacher / Faculty Accounts
 
-| ID | Name | Email | Department | Default Password | Login URL |
-|----|------|-------|-----------|-----------------|-----------|
-| TCH-008 | Dr. Rajeshwari Trivedi | `rajeshwari.trivedi@dsvv.ac.in` | Education | `Teacher@123` | `/teacher` |
-| TCH-001 | Dr. Narendra Pratap Singh | `np.singh@dsvv.ac.in` | Yogic Science | `Teacher@123` | `/teacher` |
-| — | Dr. Anupama Sharma | `anupama.sharma@dsvv.edu.in` | — | `Teacher@123` | `/teacher` |
+| ID | Name | Email | Department | Provisioning | Login URL |
+|----|------|-------|-----------|--------------|-----------|
+| TCH-008 | Dr. Rajeshwari Trivedi | `rajeshwari.trivedi@dsvv.ac.in` | Education | Institutional Directory | `/teacher` |
+| TCH-001 | Dr. Narendra Pratap Singh | `np.singh@dsvv.ac.in` | Yogic Science | Institutional Directory | `/teacher` |
+| — | Dr. Anupama Sharma | `anupama.sharma@dsvv.edu.in` | — | Institutional Directory | `/teacher` |
 
 ### 4.4 Student Account
 
-| ID | Name | Email | Default Password | Login URL |
-|----|------|-------|-----------------|-----------|
-| STU-2026-001 | Aarav Mehta | `aarav.mehta@dsvv.edu.in` | `Student@123` | `/login` |
+| ID | Name | Email | Provisioning | Login URL |
+|----|------|-------|--------------|-----------|
+| STU-2026-001 | Aarav Mehta | `aarav.mehta@dsvv.edu.in` | Student Directory | `/login` |
 
 ### 4.5 Visitor Account
 
-| Name | Email | Default Password | Login URL |
-|------|-------|-----------------|-----------|
-| Rahul Sharma | `visitor@dsvv.edu.in` | `Admin@123` *(when DEMO_ACCOUNT_PASSWORD set)* | `/login` |
+| Name | Email | Provisioning | Login URL |
+|------|-------|--------------|-----------|
+| Rahul Sharma | `visitor@dsvv.edu.in` | Self-Registered Visitor | `/login` |
 
-> **Note:** The visitor demo account is defined in `lib/demo-accounts.ts` for UI one-tap fill but may not be seeded in `lib/server/seed.ts`. Visitors typically register themselves via `/signup`.
+> **Note:** Visitors register themselves via `/signup` or are booked as visitors by campus hosts.
 
 ---
 
@@ -313,7 +313,7 @@ All endpoints are located under `/api/auth/`:
 POST /api/auth/login
 {
   "email": "admin@dsvv.edu.in",
-  "password": "Admin@123",
+  "password": "<admin_password>",
   "expectedRole": "admin"
 }
 ```

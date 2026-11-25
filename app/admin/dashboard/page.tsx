@@ -327,7 +327,7 @@ export default function AdminDashboardPage() {
 
           <Card>
             <SectionHeader
-              title="Today's Meetings"
+              title="Today&apos;s Meetings"
               description={formatDateLong(today)}
               actions={
                 <Button asChild variant="ghost" size="sm">

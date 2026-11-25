@@ -61,11 +61,7 @@ export function AdministratorShell({ children }: { children: React.ReactNode }) 
         document.cookie = "csms_role=; path=/; max-age=0;";
       }
       const target = `/administrator/login?next=${encodeURIComponent(pathname)}`;
-      if (typeof window !== "undefined") {
-        window.location.replace(target);
-      } else {
-        router.replace(target);
-      }
+      router.replace(target);
     } else if (!isAdministrator) {
       router.replace(ROLE_HOME[session.role] ?? "/admin/dashboard");
     }

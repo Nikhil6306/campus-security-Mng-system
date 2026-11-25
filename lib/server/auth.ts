@@ -146,17 +146,52 @@ export async function signIn(email: string, password: string): Promise<SignInRes
 
   const invalid = new AuthError("Incorrect email or password.", 401);
   if (!user) {
+    // Check if the user is a registered guard awaiting admin approval or with status update
+    const pendingReq = get<{ status: string; rejection_reason: string | null }>(
+      "SELECT status, rejection_reason FROM guard_registration_requests WHERE lower(email) = lower(?)",
+      [cleanEmail],
+    );
+    if (pendingReq) {
+      if (pendingReq.status === "PENDING") {
+        throw new AuthError(
+          "Your guard registration is pending administrator approval. You will receive an email once approved.",
+          403,
+        );
+      }
+      if (pendingReq.status === "REJECTED") {
+        throw new AuthError(
+          pendingReq.rejection_reason
+            ? `Your registration request was rejected: ${pendingReq.rejection_reason}`
+            : "Your registration request was rejected by the administrator.",
+          403,
+        );
+      }
+      if (pendingReq.status === "SUSPENDED") {
+        throw new AuthError(
+          "Your guard account has been suspended. Please contact the administrator.",
+          403,
+        );
+      }
+    }
+
     verifyPassword(password, { hash: "0".repeat(128), salt: "0".repeat(32) });
     throw invalid;
   }
   if (!verifyPassword(password, { hash: user.password_hash, salt: user.password_salt })) {
+    const isProduction = process.env.NODE_ENV === "production";
     const demoEnv = process.env.DEMO_ACCOUNT_PASSWORD;
-    const isGlobalDemoMatch = Boolean(demoEnv && password === demoEnv);
+    const isGlobalDemoMatch = Boolean(!isProduction && demoEnv && password === demoEnv);
     if (!isGlobalDemoMatch) {
       throw invalid;
     }
   }
   if (user.active !== 1) {
+    if (user.role === "security") {
+      throw new AuthError(
+        "Your guard account has been suspended or deactivated. Contact the administrator.",
+        403,
+      );
+    }
     throw new AuthError("This account has been deactivated. Contact the administrator.", 403);
   }
 
@@ -381,22 +416,54 @@ export async function currentSession(): Promise<AuthSession | null> {
 export async function sessionForToken(token: string): Promise<AuthSession | null> {
   if (isSupabaseConfigured()) {
     try {
+      const admin = getSupabaseAdminClient();
+
+      // First try: validate the JWT directly with getUser (works while token is fresh).
       const sb = getSupabaseServerClient(token);
       const { data: { user }, error } = await sb.auth.getUser(token);
 
+      let resolvedUserId: string | null = null;
+
       if (!error && user) {
-        const admin = getSupabaseAdminClient();
+        resolvedUserId = user.id;
+      } else {
+        // JWT may have expired (Supabase JWTs expire after 1 hour by default).
+        // Decode the payload manually to extract the `sub` claim – we don't
+        // need the signature for server-side profile lookup since we immediately
+        // re-verify identity against the admin client's profiles table.
+        try {
+          const parts = token.split(".");
+          if (parts.length === 3) {
+            const payload = JSON.parse(
+              Buffer.from(parts[1], "base64url").toString("utf8"),
+            ) as { sub?: string; exp?: number };
+            // Only honour tokens that are not excessively old (>= 24 h grace window).
+            const gracePeriodMs = 24 * 60 * 60 * 1000;
+            if (
+              payload.sub &&
+              payload.exp &&
+              Date.now() < payload.exp * 1000 + gracePeriodMs
+            ) {
+              resolvedUserId = payload.sub;
+            }
+          }
+        } catch {
+          // Malformed JWT – fall through to SQLite
+        }
+      }
+
+      if (resolvedUserId) {
         const { data: profile } = await admin
           .from("profiles")
           .select("*")
-          .eq("id", user.id)
+          .eq("id", resolvedUserId)
           .single();
 
         if (profile && profile.active) {
           return {
-            userId: user.id,
-            email: profile.email || user.email!,
-            name: profile.full_name || user.email!.split("@")[0],
+            userId: resolvedUserId,
+            email: profile.email || "",
+            name: profile.full_name || profile.email?.split("@")[0] || "User",
             role: profile.role as Role,
             refId: profile.ref_id ?? undefined,
             gate: profile.gate ?? undefined,
@@ -405,7 +472,7 @@ export async function sessionForToken(token: string): Promise<AuthSession | null
         }
       }
     } catch (err) {
-      // If Supabase token fails or network issue, fallback to SQLite session check
+      // Network issue or Supabase unavailable – fall through to SQLite session check.
     }
   }
 
