@@ -27,7 +27,9 @@ export function getAppOrigin(preferred?: string): string {
       url.hostname === "127.0.0.1" ||
       url.hostname === "::1")
   ) {
-    throw new Error("The public app URL cannot point to localhost on Vercel.");
+    return vercelUrl
+      ? `https://${vercelUrl}`
+      : "https://campus-security-management.vercel.app";
   }
 
   return url.origin;

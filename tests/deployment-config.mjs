@@ -21,7 +21,8 @@ try {
   assert.equal(getAppOrigin(), "https://campus-security-preview.vercel.app");
 
   process.env.NEXT_PUBLIC_APP_URL = "http://localhost:3000";
-  assert.throws(() => getAppOrigin(), /cannot point to localhost on Vercel/);
+  delete process.env.VERCEL_URL;
+  assert.equal(getAppOrigin(), "https://campus-security-management.vercel.app");
 
   console.log("Deployment configuration checks passed.");
 } finally {

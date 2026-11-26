@@ -1,0 +1,6 @@
+# Ignore backend NestJS service and mobile React Native app from Vercel Next.js deployment
+backend/
+mobile/
+.data/
+tests/
+D:/

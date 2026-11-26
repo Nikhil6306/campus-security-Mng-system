@@ -42,3 +42,6 @@ coverage/
 # OS generated files
 ehthumbs.db
 Desktop.ini
+
+.vercel
+.env*
