@@ -3,12 +3,12 @@ import { getSupabaseAdminClient, isSupabaseConfigured } from "@/lib/supabase";
 import { AppError } from "@/lib/server/errors";
 import { z } from "zod";
 import {
-  approveGuardRegistration,
-  createGuardRegistrationRequest,
+  approveGuardRegistrationAsync,
+  createGuardRegistrationRequestAsync,
   listGuardRegistrationRequests,
-  rejectGuardRegistration,
-  suspendGuardAccount,
-  reactivateGuardAccount,
+  rejectGuardRegistrationAsync,
+  suspendGuardAccountAsync,
+  reactivateGuardAccountAsync,
 } from "@/lib/server/services/guards";
 
 export const runtime = "nodejs";
@@ -47,20 +47,17 @@ const approvalSchema = z.object({
  * Supports ?status=PENDING | APPROVED | REJECTED | SUSPENDED | all
  */
 export async function GET(request: Request) {
-  return authedRoute(GATE_ROLES, async (session) => {
+  return authedRoute(ADMIN_ROLES, async () => {
     const url = new URL(request.url);
     const statusParam = url.searchParams.get("status") || "all";
 
-    // 1. Fetch from local SQLite store
-    const localRequests = listGuardRegistrationRequests(statusParam);
-
-    // 2. If Supabase is configured and localRequests is empty, check Supabase
-    if (isSupabaseConfigured() && localRequests.length === 0) {
+    // 1. Prefer Supabase as single source of truth when configured
+    if (isSupabaseConfigured()) {
       try {
         const admin = getSupabaseAdminClient();
         let query = admin
           .from("guard_registration_requests")
-          .select("*")
+          .select("id, full_name, email, phone, guard_id, designation, assigned_gate, status, rejection_reason, created_at, reviewed_at, reviewed_by")
           .order("created_at", { ascending: false });
 
         if (statusParam && statusParam !== "all") {
@@ -68,15 +65,32 @@ export async function GET(request: Request) {
         }
 
         const { data, error } = await query;
-        if (!error && data && data.length > 0) {
-          return { registrations: data };
+        if (!error && data) {
+          const sanitised = data.map((r: Record<string, unknown>) => ({
+            id: r.id,
+            user_id: r.id,
+            full_name: r.full_name,
+            email: r.email,
+            phone: r.phone,
+            employee_id: r.guard_id,
+            designation: r.designation,
+            assigned_gate: r.assigned_gate,
+            status: r.status,
+            rejection_reason: r.rejection_reason,
+            admin_remarks: r.rejection_reason,
+            created_at: r.created_at,
+            reviewed_at: r.reviewed_at,
+            reviewed_by: r.reviewed_by,
+          }));
+          return { registrations: sanitised };
         }
       } catch (err) {
         console.warn("[guards/registrations] Supabase query failed, falling back to local:", err);
       }
     }
 
-    // Format fields consistently for frontend
+    // 2. Fallback to local SQLite store
+    const localRequests = listGuardRegistrationRequests(statusParam);
     const mapped = localRequests.map((r) => ({
       id: r.id,
       user_id: r.id,
@@ -110,7 +124,7 @@ export async function POST(request: Request) {
       const body = await readBody(request);
       const input = registrationSchema.parse(body);
 
-      const req = createGuardRegistrationRequest({
+      const req = await createGuardRegistrationRequestAsync({
         fullName: input.fullName || session.name,
         email: input.email || session.email,
         phone: input.phone,
@@ -139,7 +153,7 @@ export async function PATCH(request: Request) {
     const input = approvalSchema.parse(body);
 
     if (input.action === "approve") {
-      const { guard } = approveGuardRegistration(input.id, session, {
+      const { guard } = await approveGuardRegistrationAsync(input.id, session, {
         gate: input.assignedGate,
         shift: input.shift,
         shiftStart: input.shiftStart,
@@ -153,19 +167,19 @@ export async function PATCH(request: Request) {
         message: `Guard registration for ${guard.fullName} has been approved. Account activated.`,
       };
     } else if (input.action === "reject") {
-      rejectGuardRegistration(input.id, session, input.adminRemarks);
+      await rejectGuardRegistrationAsync(input.id, session, input.adminRemarks);
       return {
         status: "Rejected",
         message: "Guard registration request has been rejected.",
       };
     } else if (input.action === "suspend") {
-      suspendGuardAccount(input.id, session, input.adminRemarks);
+      await suspendGuardAccountAsync(input.id, session, input.adminRemarks);
       return {
         status: "Suspended",
         message: "Guard account has been suspended.",
       };
     } else if (input.action === "reactivate") {
-      reactivateGuardAccount(input.id, session);
+      await reactivateGuardAccountAsync(input.id, session);
       return {
         status: "Active",
         message: "Guard account has been reactivated.",

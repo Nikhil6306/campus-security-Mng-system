@@ -14,8 +14,16 @@ function requiredEnvironmentVariable(name: string): string {
   return value;
 }
 
+function getSupabaseUrl(): string | undefined {
+  return getEnv("NEXT_PUBLIC_SUPABASE_URL") || getEnv("SUPABASE_URL");
+}
+
+function getSupabaseAnonKey(): string | undefined {
+  return getEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY") || getEnv("SUPABASE_ANON_KEY");
+}
+
 export function isSupabaseConfigured(): boolean {
-  return Boolean(getEnv("NEXT_PUBLIC_SUPABASE_URL") && (getEnv("SUPABASE_SERVICE_ROLE_KEY") || getEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY")));
+  return Boolean(getSupabaseUrl() && (getEnv("SUPABASE_SERVICE_ROLE_KEY") || getSupabaseAnonKey()));
 }
 
 /**
@@ -23,8 +31,8 @@ export function isSupabaseConfigured(): boolean {
  * If an access token is provided, requests run in the context of that authenticated user.
  */
 export function getSupabaseServerClient(token?: string): SupabaseClient {
-  const url = requiredEnvironmentVariable("NEXT_PUBLIC_SUPABASE_URL");
-  const anonKey = requiredEnvironmentVariable("NEXT_PUBLIC_SUPABASE_ANON_KEY");
+  const url = getSupabaseUrl() || requiredEnvironmentVariable("NEXT_PUBLIC_SUPABASE_URL");
+  const anonKey = getSupabaseAnonKey() || requiredEnvironmentVariable("NEXT_PUBLIC_SUPABASE_ANON_KEY");
 
   return createClient(url, anonKey, {
     auth: {
@@ -51,7 +59,7 @@ let adminClientInstance: SupabaseClient | null = null;
 export function getSupabaseAdminClient(): SupabaseClient {
   if (adminClientInstance) return adminClientInstance;
 
-  const url = requiredEnvironmentVariable("NEXT_PUBLIC_SUPABASE_URL");
+  const url = getSupabaseUrl() || requiredEnvironmentVariable("NEXT_PUBLIC_SUPABASE_URL");
   const serviceKey = requiredEnvironmentVariable("SUPABASE_SERVICE_ROLE_KEY");
 
   adminClientInstance = createClient(url, serviceKey, {

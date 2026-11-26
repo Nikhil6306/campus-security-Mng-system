@@ -363,12 +363,14 @@ function seedGuardDuty(): void {
     ["Sports Gate", "Night", 0],
   ] as const;
 
+  let staffIdx = 1;
   for (const [gate, shift, required] of staffing) {
+    const id = `STF-${String(staffIdx++).padStart(3, "0")}`;
     run(
-      `INSERT INTO gate_staffing_requirements(gate, shift_type, required_guards, notes, updated_at)
-       VALUES (?,?,?, 'Standard security baseline', ?)
-       ON CONFLICT(gate, shift_type) DO UPDATE SET required_guards = excluded.required_guards`,
-      [gate, shift, required, stamp],
+      `INSERT INTO gate_staffing_requirements(id, gate, shift_type, min_guards, ideal_guards, updated_at)
+       VALUES (?,?,?,?,?,?)
+       ON CONFLICT(gate, shift_type) DO UPDATE SET min_guards = excluded.min_guards, ideal_guards = excluded.ideal_guards`,
+      [id, gate, shift, required, Math.max(required, 1), stamp],
     );
   }
 
@@ -401,11 +403,12 @@ function seedGuardDuty(): void {
   ] as const;
 
   for (const [id, name, desc, zones, freq, active] of routes) {
+    const freqHours = freq.includes("3") ? 3 : 2;
     run(
-      `INSERT INTO patrol_routes(id, name, description, zones, frequency, active, created_at, updated_at)
-       VALUES (?,?,?,?,?,?,?,?)
-       ON CONFLICT(id) DO UPDATE SET name = excluded.name, description = excluded.description`,
-      [id, name, desc, zones, freq, active, stamp, stamp],
+      `INSERT INTO patrol_routes(id, name, zone, applicable_gates, frequency_hours, active, created_at)
+       VALUES (?,?,?,?,?,?,?)
+       ON CONFLICT(id) DO UPDATE SET name = excluded.name, zone = excluded.zone, applicable_gates = excluded.applicable_gates`,
+      [id, name, desc, zones, freqHours, active, stamp],
     );
   }
 
@@ -485,10 +488,10 @@ function seedGuardDuty(): void {
 
   for (const [id, routeId, name, loc, inst, items, photoReq, sort] of checkpoints) {
     run(
-      `INSERT INTO patrol_checkpoints(id, route_id, name, location, instructions, inspection_items, photo_required, sort_order, active, created_at, updated_at)
-       VALUES (?,?,?,?,?,?,?,?,1,?,?)
-       ON CONFLICT(id) DO UPDATE SET name = excluded.name, instructions = excluded.instructions`,
-      [id, routeId, name, loc, inst, items, photoReq, sort, stamp, stamp],
+      `INSERT INTO patrol_checkpoints(id, route_id, title, location, instructions, required_items, order_index, photo_required, active)
+       VALUES (?,?,?,?,?,?,?,?,1)
+       ON CONFLICT(id) DO UPDATE SET title = excluded.title, instructions = excluded.instructions`,
+      [id, routeId, name, loc, inst, items, sort, photoReq],
     );
   }
 }

@@ -221,7 +221,7 @@ export default function SecuritySplashScreen() {
             <Button
               label="Register New Guard Account"
               variant="secondary"
-              onPress={() => router.push('/register')}
+              onPress={() => router.push('/register' as any)}
             />
           </View>
           <AppText style={styles.copyright}>

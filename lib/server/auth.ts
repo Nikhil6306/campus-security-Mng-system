@@ -74,6 +74,46 @@ export async function signIn(email: string, password: string): Promise<SignInRes
       });
 
       if (error || !data.user || !data.session) {
+        // Check if user is a registered guard awaiting admin approval (SQLite + Supabase)
+        let pendingReq = get<{ status: string; rejection_reason: string | null }>(
+          "SELECT status, rejection_reason FROM guard_registration_requests WHERE lower(email) = lower(?)",
+          [cleanEmail],
+        );
+        if (!pendingReq) {
+          try {
+            const adminLookup = getSupabaseAdminClient();
+            const { data: sbReq } = await adminLookup
+              .from("guard_registration_requests")
+              .select("status, rejection_reason")
+              .ilike("email", cleanEmail)
+              .maybeSingle();
+            if (sbReq) pendingReq = sbReq;
+          } catch {
+            // Ignore Supabase lookup failure
+          }
+        }
+        if (pendingReq) {
+          if (pendingReq.status === "PENDING") {
+            throw new AuthError(
+              "Your guard registration request has been submitted successfully. Your account is currently awaiting Admin approval. You will be able to access the Guard Dashboard after your request is approved.",
+              403,
+            );
+          }
+          if (pendingReq.status === "REJECTED") {
+            throw new AuthError(
+              pendingReq.rejection_reason
+                ? `Your registration request was rejected: ${pendingReq.rejection_reason}`
+                : "Your registration request was rejected by the administrator.",
+              403,
+            );
+          }
+          if (pendingReq.status === "SUSPENDED") {
+            throw new AuthError(
+              "Your guard account has been suspended. Please contact the administrator.",
+              403,
+            );
+          }
+        }
         throw new AuthError(error?.message || "Incorrect email or password.", 401);
       }
 
@@ -112,6 +152,25 @@ export async function signIn(email: string, password: string): Promise<SignInRes
       }
 
       if (!profile.active) {
+        const { data: sbReq } = await admin
+          .from("guard_registration_requests")
+          .select("status, rejection_reason")
+          .ilike("email", cleanEmail)
+          .maybeSingle();
+        if (sbReq?.status === "PENDING") {
+          throw new AuthError(
+            "Your guard registration request has been submitted successfully. Your account is currently awaiting Admin approval. You will be able to access the Guard Dashboard after your request is approved.",
+            403,
+          );
+        }
+        if (sbReq?.status === "REJECTED") {
+          throw new AuthError(
+            sbReq.rejection_reason
+              ? `Your registration request was rejected: ${sbReq.rejection_reason}`
+              : "Your registration request was rejected by the administrator.",
+            403,
+          );
+        }
         throw new AuthError("This account has been deactivated. Contact the administrator.", 403);
       }
 
@@ -154,7 +213,7 @@ export async function signIn(email: string, password: string): Promise<SignInRes
     if (pendingReq) {
       if (pendingReq.status === "PENDING") {
         throw new AuthError(
-          "Your guard registration is pending administrator approval. You will receive an email once approved.",
+          "Your guard registration request has been submitted successfully. Your account is currently awaiting Admin approval. You will be able to access the Guard Dashboard after your request is approved.",
           403,
         );
       }

@@ -75,9 +75,14 @@ function resolveBooking(input: {
     try {
       if (rawToken.startsWith("http://") || rawToken.startsWith("https://")) {
         const url = new URL(rawToken);
-        const parts = url.pathname.split("/").filter(Boolean);
-        const lastPart = parts[parts.length - 1];
-        if (lastPart) rawToken = decodeURIComponent(lastPart);
+        const queryParam = url.searchParams.get("token") || url.searchParams.get("id");
+        if (queryParam) {
+          rawToken = decodeURIComponent(queryParam);
+        } else {
+          const parts = url.pathname.split("/").filter(Boolean);
+          const lastPart = parts[parts.length - 1];
+          if (lastPart) rawToken = decodeURIComponent(lastPart);
+        }
       }
     } catch {
       // ignore URL parsing error and use raw string

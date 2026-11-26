@@ -29,6 +29,7 @@ create index if not exists idx_guard_req_email on public.guard_registration_requ
 alter table public.guard_registration_requests enable row level security;
 
 -- Policies
+drop policy if exists "Admins have full access to guard registration requests" on public.guard_registration_requests;
 create policy "Admins have full access to guard registration requests"
   on public.guard_registration_requests
   for all
@@ -41,6 +42,7 @@ create policy "Admins have full access to guard registration requests"
     )
   );
 
+drop policy if exists "Guards can read their own registration request" on public.guard_registration_requests;
 create policy "Guards can read their own registration request"
   on public.guard_registration_requests
   for select
@@ -49,6 +51,7 @@ create policy "Guards can read their own registration request"
     email = auth.jwt() ->> 'email'
   );
 
+drop policy if exists "Anyone can insert a guard registration request" on public.guard_registration_requests;
 create policy "Anyone can insert a guard registration request"
   on public.guard_registration_requests
   for insert

@@ -16,6 +16,7 @@ import {
   Settings,
   ShieldAlert,
   ShieldCheck,
+  UserCheck,
   Users,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -61,6 +62,7 @@ export const adminNav: NavGroup[] = [
     label: "Personnel & Posts",
     items: [
       { href: "/admin/guards", label: "Guard Management", icon: ShieldCheck },
+      { href: "/admin/guard-registrations", label: "Guard Requests", icon: UserCheck },
       { href: "/admin/teachers", label: "Faculty Management", icon: Building2 },
       { href: "/admin/guard-duty", label: "Guard Duty & Shifts", icon: ShieldCheck },
       { href: "/admin/vehicles", label: "Vehicle Management", icon: Car },

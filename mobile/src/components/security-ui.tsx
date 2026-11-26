@@ -16,6 +16,8 @@ export const colors = {
   ink: '#172033',
   muted: '#5F6F86',
   line: '#DCE5F2',
+  border: '#DCE5F2',
+  slateSoft: '#F4F7FB',
   green: '#168A55',
   greenSoft: '#E8F7F0',
   red: '#D64545',
@@ -135,7 +137,7 @@ export function Button({ label, onPress, icon: Icon, variant = 'primary', disabl
   );
 }
 
-export function Field({ label, value, onChangeText, placeholder, keyboardType, secureTextEntry, right, multiline = false, autoCapitalize }: {
+export function Field({ label, value, onChangeText, placeholder, keyboardType, secureTextEntry, right, multiline = false, autoCapitalize, maxLength }: {
   label: string;
   value: string;
   onChangeText: (value: string) => void;
@@ -145,12 +147,13 @@ export function Field({ label, value, onChangeText, placeholder, keyboardType, s
   right?: ReactNode;
   multiline?: boolean;
   autoCapitalize?: ComponentProps<typeof TextInput>['autoCapitalize'];
+  maxLength?: number;
 }) {
   return (
     <View style={styles.fieldWrap}>
       <AppText style={styles.fieldLabel}>{label}</AppText>
       <View style={[styles.inputShell, multiline && styles.multilineShell]}>
-        <TextInput accessibilityLabel={label} value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor="#9AA7B8" keyboardType={keyboardType} secureTextEntry={secureTextEntry} multiline={multiline} autoCapitalize={autoCapitalize} style={[styles.input, multiline && styles.multilineInput]} />
+        <TextInput accessibilityLabel={label} value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor="#9AA7B8" keyboardType={keyboardType} secureTextEntry={secureTextEntry} multiline={multiline} autoCapitalize={autoCapitalize} maxLength={maxLength} style={[styles.input, multiline && styles.multilineInput]} />
         {right}
       </View>
     </View>
@@ -163,9 +166,9 @@ export function Pill({ label, tone = 'blue' }: { label: string; tone?: 'blue' | 
   return <View style={[styles.pill, toneStyle]}><AppText style={[styles.pillText, textStyle]}>{label}</AppText></View>;
 }
 
-export function Notice({ children, tone = 'blue' }: { children: ReactNode; tone?: 'blue' | 'red' | 'green' }) {
-  const noticeStyle = tone === 'red' ? styles.noticeRed : tone === 'green' ? styles.noticeGreen : styles.noticeBlue;
-  const noticeText = tone === 'red' ? styles.noticeRedText : tone === 'green' ? styles.noticeGreenText : styles.noticeBlueText;
+export function Notice({ children, tone = 'blue' }: { children: ReactNode; tone?: 'blue' | 'red' | 'green' | 'amber' }) {
+  const noticeStyle = tone === 'red' ? styles.noticeRed : tone === 'green' ? styles.noticeGreen : tone === 'amber' ? styles.noticeAmber : styles.noticeBlue;
+  const noticeText = tone === 'red' ? styles.noticeRedText : tone === 'green' ? styles.noticeGreenText : tone === 'amber' ? styles.noticeAmberText : styles.noticeBlueText;
   return <View style={[styles.notice, noticeStyle]}><AppText style={[styles.noticeText, noticeText]}>{children}</AppText></View>;
 }
 
@@ -277,6 +280,8 @@ const styles = StyleSheet.create({
   noticeRedText: { color: '#9C2E36' },
   noticeGreen: { backgroundColor: colors.greenSoft, borderColor: '#C8EDDA' },
   noticeGreenText: { color: '#236B4F' },
+  noticeAmber: { backgroundColor: colors.amberSoft, borderColor: '#FDE68A' },
+  noticeAmberText: { color: colors.amber },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: { minHeight: 44, borderRadius: 22, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.white },
   chipSelected: { backgroundColor: colors.blueSoft, borderColor: colors.blue },

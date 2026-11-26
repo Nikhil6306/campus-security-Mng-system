@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { bootstrap, readBody } from "@/lib/server/http";
 import { AppError } from "@/lib/server/errors";
-import { createGuardRegistrationRequest } from "@/lib/server/services/guards";
+import { createGuardRegistrationRequestAsync } from "@/lib/server/services/guards";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,11 +18,12 @@ export async function POST(request: Request) {
       );
     }
 
-    const { fullName, email, phone, guardId, password, designation, assignedGate } = body as Record<string, string>;
+    const { fullName, email, phone, mobileNumber, password } = body as Record<string, string>;
+    const contactPhone = phone || mobileNumber;
 
-    if (!fullName || !fullName.trim()) {
+    if (!fullName || !fullName.trim() || fullName.trim().length < 3) {
       return NextResponse.json(
-        { ok: false, error: { message: "Full Name is required.", code: "bad_request" } },
+        { ok: false, error: { message: "Full Name must be at least 3 characters.", code: "bad_request" } },
         { status: 400 },
       );
     }
@@ -32,15 +33,9 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
-    if (!phone || phone.trim().length < 10) {
+    if (!contactPhone || contactPhone.trim().length < 10) {
       return NextResponse.json(
-        { ok: false, error: { message: "A valid 10-digit mobile number is required.", code: "bad_request" } },
-        { status: 400 },
-      );
-    }
-    if (!guardId || !guardId.trim()) {
-      return NextResponse.json(
-        { ok: false, error: { message: "Guard ID / Employee ID is required.", code: "bad_request" } },
+        { ok: false, error: { message: "A valid 10-digit Indian mobile number is required (+91 optional).", code: "bad_request" } },
         { status: 400 },
       );
     }
@@ -51,27 +46,25 @@ export async function POST(request: Request) {
       );
     }
 
-    const req = createGuardRegistrationRequest({
+    const req = await createGuardRegistrationRequestAsync({
       fullName: fullName.trim(),
       email: email.trim(),
-      phone: phone.trim(),
-      guardId: guardId.trim(),
+      phone: contactPhone.trim(),
       password,
-      designation: designation?.trim(),
-      assignedGate: assignedGate?.trim(),
     });
 
     return NextResponse.json({
       ok: true,
       message:
-        "Your registration request has been submitted successfully. Your account is waiting for Admin approval. You will receive an email after approval.",
+        "Your guard registration request has been submitted successfully. Your account is currently awaiting Admin approval. You will be able to access the Guard Dashboard after your request is approved.",
       data: {
         id: req.id,
+        requestId: req.id,
         fullName: req.full_name,
         email: req.email,
+        phone: req.phone,
         guardId: req.guard_id,
         status: req.status,
-        assignedGate: req.assigned_gate,
         createdAt: req.created_at,
       },
     });

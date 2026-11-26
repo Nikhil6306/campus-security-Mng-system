@@ -71,10 +71,23 @@ export function QrScanner({
     setMessage(undefined);
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" },
-        audio: false,
-      });
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment" },
+          audio: false,
+        });
+      } catch (err) {
+        // Fall back to default video if the environment constraint fails or is overconstrained
+        if ((err as { name?: string })?.name === "OverconstrainedError") {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: false,
+          });
+        } else {
+          throw err;
+        }
+      }
       streamRef.current = stream;
 
       const video = videoRef.current;
@@ -109,7 +122,7 @@ export function QrScanner({
 
         const image = context.getImageData(0, 0, width, height);
         const result = jsQR(image.data, image.width, image.height, {
-          inversionAttempts: "dontInvert",
+          inversionAttempts: "attemptBoth",
         });
 
         if (result?.data && result.data !== lastValueRef.current) {

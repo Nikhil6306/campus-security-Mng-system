@@ -10,6 +10,8 @@
 --   * Row Level Security policies for check_logs and movements
 -- ---------------------------------------------------------------------------
 
+create extension if not exists pgcrypto with schema extensions;
+
 -- 1. Pass token hash column and index
 alter table public.visit_requests
   add column if not exists pass_token_hash text;
@@ -19,7 +21,7 @@ create index if not exists idx_visits_pass_token_hash
 
 -- Backfill hashes for existing pass tokens
 update public.visit_requests
-set pass_token_hash = encode(digest(pass_token, 'sha256'), 'hex')
+set pass_token_hash = encode(extensions.digest(pass_token, 'sha256'), 'hex')
 where pass_token is not null and pass_token_hash is null;
 
 -- 2. Trigger function to keep pass_token_hash in sync
@@ -27,11 +29,11 @@ create or replace function public.sync_pass_token_hash()
 returns trigger
 language plpgsql
 security definer
-set search_path = public, pg_temp
+set search_path = public, extensions, pg_temp
 as $$
 begin
   if new.pass_token is not null then
-    new.pass_token_hash := encode(digest(new.pass_token, 'sha256'), 'hex');
+    new.pass_token_hash := encode(extensions.digest(new.pass_token, 'sha256'), 'hex');
   else
     new.pass_token_hash := null;
   end if;
@@ -78,7 +80,7 @@ begin
   if v_token like 'http://%' or v_token like 'https://%' then
     v_token := regexp_replace(v_token, '^.*/([^/?#]+).*$', '\1');
   end if;
-  v_hash := encode(digest(v_token, 'sha256'), 'hex');
+  v_hash := encode(extensions.digest(v_token, 'sha256'), 'hex');
 
   -- Lookup booking by pass_token, pass_token_hash, or human-readable id
   select *
