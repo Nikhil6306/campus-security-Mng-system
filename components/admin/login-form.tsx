@@ -413,7 +413,13 @@ export function LoginForm({
             <div className="flex flex-col gap-2 pt-2">
               <Button type="submit" className="w-full py-5 font-semibold text-base shadow-sm" loading={submitting}>
                 <LogIn className="h-4 w-4 mr-1" />
-                Sign In as Guard
+                {expectedRole === "super_admin" || expectedRole === "admin"
+                  ? "Sign In as Administrator"
+                  : expectedRole === "teacher"
+                    ? "Sign In as Teacher"
+                    : expectedRole === "security"
+                      ? "Sign In as Guard"
+                      : "Sign In"}
               </Button>
             </div>
           </form>
