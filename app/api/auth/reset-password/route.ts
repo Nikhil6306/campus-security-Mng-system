@@ -14,18 +14,23 @@ export async function POST(request: Request) {
     bootstrap();
     const input = parse(resetPasswordSchema, await readBody(request));
 
-    // Get token from Authorization header or cookie
-    const authHeader = request.headers.get("authorization");
-    let token = authHeader?.replace(/^Bearer\s+/i, "")?.trim();
-    if (!token) {
-      const store = await cookies();
-      token = store.get(SESSION_COOKIE)?.value;
-    }
+    let token: string | undefined;
 
-    // If no token in header/cookie, check if email + otp were provided in body
-    if (!token && input.email && input.otp) {
+    // 1. If email + otp are provided in body, verify OTP directly (preferred and secure)
+    if (input.email && input.otp) {
       const verification = await verifyPasswordResetOtp(input.email, input.otp);
       token = verification.recoveryToken;
+    } else if (input.email && !input.otp) {
+      // Explicitly reject attempts to bypass OTP when specifying an email
+      throw new AuthError("Verification code (OTP) is required to reset password for this email.", 400);
+    } else {
+      // 2. Otherwise fall back to Authorization header or session cookie (e.g. recovery token set in cookie or logged-in user)
+      const authHeader = request.headers.get("authorization");
+      token = authHeader?.replace(/^Bearer\s+/i, "")?.trim();
+      if (!token) {
+        const store = await cookies();
+        token = store.get(SESSION_COOKIE)?.value;
+      }
     }
 
     if (!token) {

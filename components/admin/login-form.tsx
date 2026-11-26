@@ -3,15 +3,13 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, Eye, EyeOff, Info, LogIn } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, LogIn } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
 import { FormField } from "@/components/shared/form-field";
 import { toast } from "@/components/ui/toaster";
 import { useAuth } from "@/components/providers/auth-provider";
-import { DEMO_ACCOUNTS, type DemoAccount } from "@/lib/demo-accounts";
 import { errorMessage, fieldErrors } from "@/lib/api";
 import { ROLE_HOME, type Role } from "@/lib/types";
 import { validateEmail, type FieldErrors } from "@/lib/validation";
@@ -73,12 +71,6 @@ export function LoginForm({
     }
   }, [ready, session, router, nextParam, submitting]);
 
-  const fillDemo = (account: DemoAccount) => {
-    setEmail(account.email);
-    setPassword("");
-    setErrors({});
-  };
-
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
 
@@ -101,10 +93,6 @@ export function LoginForm({
       setSubmitting(false);
     }
   };
-
-  const accounts = expectedRole
-    ? DEMO_ACCOUNTS.filter((a) => a.role === expectedRole)
-    : DEMO_ACCOUNTS;
 
   const defaultTitle =
     expectedRole === "super_admin"
@@ -202,48 +190,6 @@ export function LoginForm({
           </Button>
         </div>
       </form>
-
-      {/* Seeded demonstration accounts — remove before real deployment. */}
-      <section
-        aria-labelledby="demo-accounts"
-        className="rounded-lg border border-warning/30 bg-warning/[0.07] p-4"
-      >
-        <div className="flex gap-2.5">
-          <Info className="mt-0.5 h-4 w-4 shrink-0 text-warning-strong" aria-hidden />
-          <div className="min-w-0 space-y-1">
-            <h2 id="demo-accounts" className="text-sm font-semibold">
-              Demonstration accounts
-            </h2>
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              These accounts ship with the seeded demo data. Passwords are stored hashed and
-              verified on the server — delete or re-password these accounts before the system
-              handles real visitors.
-            </p>
-          </div>
-        </div>
-
-        <Separator className="my-3.5 bg-warning/20" />
-
-        <ul className="grid gap-2 sm:grid-cols-2">
-          {accounts.map((account) => (
-            <li key={account.role}>
-              <button
-                type="button"
-                onClick={() => fillDemo(account)}
-                className="w-full rounded-md border border-border bg-card px-3 py-2 text-left transition-colors hover:border-primary/40 hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <span className="block text-xs font-semibold">{account.label}</span>
-                <span className="block truncate font-mono text-[11px] text-muted-foreground">
-                  {account.email}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-        <p className="mt-2.5 text-[11px] text-muted-foreground">
-          Select an account to fill its email, then enter its configured password.
-        </p>
-      </section>
 
       <Button asChild variant="ghost" size="sm" className="w-full">
         <Link href="/">

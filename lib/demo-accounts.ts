@@ -23,8 +23,8 @@ export const DEMO_ACCOUNTS: DemoAccount[] = [
   {
     role: "super_admin",
     label: "Administrator",
-    email: "superadmin@dsvv.edu.in",
-    name: "Campus Security Director",
+    email: "nikhilshukla1200@gmail.com",
+    name: "Nikhil Shukla",
     description: "Full executive access, staff records, system settings and policy controls.",
   },
   {
@@ -37,8 +37,8 @@ export const DEMO_ACCOUNTS: DemoAccount[] = [
   {
     role: "security",
     label: "Security Guard",
-    email: "security@dsvv.edu.in",
-    name: "Amit Kumar · Main Gate",
+    email: "r62871851@gmail.com",
+    name: "Ramu Guard · Main Gate",
     description: "Gate console — verification, check-in, check-out, incidents.",
   },
   {

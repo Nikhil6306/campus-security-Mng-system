@@ -463,9 +463,53 @@ export const forgotPasswordSchema = z.object({
   email: zEmail,
 });
 
+export const sendOtpSchema = z.object({
+  email: zEmail,
+  purpose: z
+    .enum([
+      "signup_verification",
+      "password_reset",
+      "email_change_old",
+      "email_change_new",
+      "login_verification",
+    ])
+    .default("password_reset"),
+});
+
 export const verifyOtpSchema = z.object({
   email: zEmail,
   otp: z.string().trim().min(4, "Verification code must be at least 4 characters.").max(12, "Verification code is too long."),
+  purpose: z
+    .enum([
+      "signup_verification",
+      "password_reset",
+      "email_change_old",
+      "email_change_new",
+      "login_verification",
+    ])
+    .optional(),
+});
+
+export const completeSignupSchema = z.object({
+  email: zEmail,
+  otp: z.string().trim().min(4, "Verification code must be at least 4 characters.").max(12, "Verification code is too long."),
+});
+
+export const changeEmailRequestSchema = z.object({
+  newEmail: zEmail,
+});
+
+export const changeEmailOtpSchema = z.object({
+  otp: z.string().trim().min(4, "Verification code must be at least 4 characters.").max(12, "Verification code is too long."),
+});
+
+export const sendEmailNotificationSchema = z.object({
+  toEmail: zEmail,
+  toName: z.string().trim().min(1, "Name is required."),
+  eventType: z.string().trim().min(1, "Event type is required."),
+  eventDescription: z.string().trim().min(1, "Description is required."),
+  role: z.string().optional(),
+  subject: z.string().optional(),
 });
 
 export const resendOtpSchema = z.object({

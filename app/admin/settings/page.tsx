@@ -37,6 +37,7 @@ import { DEFAULT_SETTINGS } from "@/lib/settings";
 import type { AppSettings } from "@/lib/types";
 import { cn, formatDateTime } from "@/lib/utils";
 import { validateText, type FieldErrors } from "@/lib/validation";
+import { ChangeEmailDialog } from "@/components/auth/change-email-dialog";
 
 type SettingsField = keyof AppSettings;
 
@@ -85,6 +86,7 @@ export default function SettingsPage() {
   const [mounted, setMounted] = React.useState(false);
   const [resetOpen, setResetOpen] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
+  const [changeEmailOpen, setChangeEmailOpen] = React.useState(false);
 
   React.useEffect(() => setMounted(true), []);
 
@@ -224,18 +226,33 @@ export default function SettingsPage() {
                 provider once a backend is connected.
               </div>
 
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  signOut();
-                  toast.success("Logged out successfully.");
-                  router.push("/login");
-                }}
-              >
-                <LogOut className="h-4 w-4" />
-                Log out
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setChangeEmailOpen(true)}
+                >
+                  Change Email Address
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    signOut();
+                    toast.success("Logged out successfully.");
+                    router.push("/login");
+                  }}
+                >
+                  <LogOut className="h-4 w-4" />
+                  Log out
+                </Button>
+              </div>
+
+              <ChangeEmailDialog
+                open={changeEmailOpen}
+                onOpenChange={setChangeEmailOpen}
+                currentEmail={session?.email ?? ""}
+              />
             </div>
           </Card>
 

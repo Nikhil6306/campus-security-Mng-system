@@ -986,11 +986,152 @@ export async function requestPasswordReset(email: string): Promise<{ ok: boolean
     });
     const json = await res.json().catch(() => ({}));
     if (res.ok && json.ok) {
-      return { ok: true, message: json.data?.message || 'Password reset link sent to your registered email.' };
+      return { ok: true, message: json.data?.message || 'Password reset code sent to your registered email.' };
     }
     return { ok: false, error: json.error?.message || 'Password reset request failed.' };
   } catch (err) {
     return { ok: false, error: 'Network failure while requesting password reset.' };
+  }
+}
+
+/**
+ * Verifies 6-digit OTP code for password reset.
+ */
+export async function verifyPasswordResetOtp(
+  email: string,
+  otp: string,
+): Promise<{ ok: boolean; recoveryToken?: string; error?: string }> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/auth/verify-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email.trim(), otp: otp.trim(), purpose: 'password_reset' }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (res.ok && json.ok) {
+      return { ok: true, recoveryToken: json.data?.recoveryToken };
+    }
+    return { ok: false, error: json.error?.message || 'Invalid or expired verification code.' };
+  } catch {
+    return { ok: false, error: 'Network failure while verifying code.' };
+  }
+}
+
+/**
+ * Sets a new password using the verified OTP or recovery token.
+ */
+export async function completePasswordReset(
+  password: string,
+  email?: string,
+  otp?: string,
+  recoveryToken?: string,
+): Promise<{ ok: boolean; message?: string; error?: string }> {
+  try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (recoveryToken) {
+      headers.Authorization = `Bearer ${recoveryToken}`;
+    }
+    const res = await fetch(`${API_BASE_URL}/api/auth/reset-password`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ password, email, otp }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (res.ok && json.ok) {
+      return { ok: true, message: 'Password updated successfully.' };
+    }
+    return { ok: false, error: json.error?.message || 'Failed to update password.' };
+  } catch {
+    return { ok: false, error: 'Network failure while resetting password.' };
+  }
+}
+
+/**
+ * Step 1: Request email change (sends OTP to current registered email).
+ */
+export async function requestMobileEmailChange(
+  newEmail: string,
+): Promise<{ ok: boolean; message?: string; error?: string }> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/auth/change-email/request`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ newEmail: newEmail.trim() }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (res.ok && json.ok) {
+      return { ok: true, message: json.message || 'Verification code sent to current email.' };
+    }
+    return { ok: false, error: json.error?.message || 'Failed to request email change.' };
+  } catch {
+    return { ok: false, error: 'Network error while requesting email change.' };
+  }
+}
+
+/**
+ * Step 2: Verify OTP sent to current registered email.
+ */
+export async function verifyMobileOldEmailOtp(
+  otp: string,
+): Promise<{ ok: boolean; message?: string; newEmail?: string; error?: string }> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/auth/change-email/verify-old`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ otp: otp.trim() }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (res.ok && json.ok) {
+      return { ok: true, message: json.message, newEmail: json.data?.newEmail };
+    }
+    return { ok: false, error: json.error?.message || 'Invalid verification code.' };
+  } catch {
+    return { ok: false, error: 'Network error while verifying code.' };
+  }
+}
+
+/**
+ * Step 3: Verify OTP sent to new email and finalize change.
+ */
+export async function verifyMobileNewEmailOtp(
+  otp: string,
+): Promise<{ ok: boolean; message?: string; updatedEmail?: string; error?: string }> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/auth/change-email/verify-new`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ otp: otp.trim() }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (res.ok && json.ok) {
+      return { ok: true, message: json.message, updatedEmail: json.data?.updatedEmail };
+    }
+    return { ok: false, error: json.error?.message || 'Invalid verification code.' };
+  } catch {
+    return { ok: false, error: 'Network error while finalizing email change.' };
+  }
+}
+
+/**
+ * Completes registration verification using 6-digit OTP.
+ */
+export async function completeMobileSignup(
+  email: string,
+  otp: string,
+): Promise<{ ok: boolean; message?: string; error?: string }> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/auth/complete-signup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email.trim(), otp: otp.trim() }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (res.ok && json.ok) {
+      return { ok: true, message: json.message || 'Account verified successfully.' };
+    }
+    return { ok: false, error: json.error?.message || 'Verification failed.' };
+  } catch {
+    return { ok: false, error: 'Network error during signup verification.' };
   }
 }
 

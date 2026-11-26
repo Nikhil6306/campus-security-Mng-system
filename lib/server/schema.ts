@@ -70,6 +70,71 @@ CREATE INDEX IF NOT EXISTS idx_reset_otps_email ON password_reset_otps(email);
 CREATE INDEX IF NOT EXISTS idx_reset_otps_expiry ON password_reset_otps(expires_at);
 
 /* ---------------------------------------------------------------- *
+ * EmailJS OTP & Notification tables (Supabase migration 0021 sync)
+ * ---------------------------------------------------------------- */
+
+CREATE TABLE IF NOT EXISTS auth_email_otps (
+  id           TEXT PRIMARY KEY,
+  user_id      TEXT,
+  email        TEXT NOT NULL,
+  otp_hash     TEXT NOT NULL,
+  otp_salt     TEXT NOT NULL,
+  purpose      TEXT NOT NULL,
+  expires_at   TEXT NOT NULL,
+  attempts     INTEGER NOT NULL DEFAULT 0,
+  max_attempts INTEGER NOT NULL DEFAULT 5,
+  verified_at  TEXT,
+  consumed_at  TEXT,
+  created_at   TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_auth_otps_email_purpose ON auth_email_otps(email, purpose);
+CREATE INDEX IF NOT EXISTS idx_auth_otps_expires ON auth_email_otps(expires_at);
+
+CREATE TABLE IF NOT EXISTS email_notifications (
+  id                TEXT PRIMARY KEY,
+  user_id           TEXT,
+  recipient_email   TEXT NOT NULL,
+  event_type        TEXT NOT NULL,
+  subject           TEXT NOT NULL,
+  delivery_status   TEXT NOT NULL DEFAULT 'pending',
+  provider          TEXT NOT NULL DEFAULT 'emailjs',
+  provider_response TEXT,
+  error_message     TEXT,
+  created_at        TEXT NOT NULL,
+  sent_at           TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_email_notif_user ON email_notifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_email_notif_email ON email_notifications(recipient_email);
+CREATE INDEX IF NOT EXISTS idx_email_notif_created ON email_notifications(created_at);
+
+CREATE TABLE IF NOT EXISTS account_security_logs (
+  id              TEXT PRIMARY KEY,
+  user_id         TEXT,
+  event_type      TEXT NOT NULL,
+  description     TEXT NOT NULL,
+  ip_address_hash TEXT,
+  device_info     TEXT,
+  metadata        TEXT NOT NULL DEFAULT '{}',
+  created_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sec_logs_user ON account_security_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_sec_logs_created ON account_security_logs(created_at);
+
+CREATE TABLE IF NOT EXISTS pending_email_changes (
+  id                    TEXT PRIMARY KEY,
+  user_id               TEXT NOT NULL,
+  old_email             TEXT NOT NULL,
+  new_email             TEXT NOT NULL,
+  old_email_verified_at TEXT,
+  new_email_verified_at TEXT,
+  status                TEXT NOT NULL DEFAULT 'pending',
+  expires_at            TEXT NOT NULL,
+  created_at            TEXT NOT NULL,
+  completed_at          TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_pending_email_user ON pending_email_changes(user_id);
+
+/* ---------------------------------------------------------------- *
  * Organisation
  * ---------------------------------------------------------------- */
 

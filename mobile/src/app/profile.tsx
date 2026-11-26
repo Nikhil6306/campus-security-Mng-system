@@ -5,6 +5,7 @@ import {
   ChevronRight,
   CircleHelp,
   LogOut,
+  Mail,
   Shield,
   ShieldCheck,
   UserRound,
@@ -12,13 +13,30 @@ import {
   type LucideIcon,
 } from 'lucide-react-native';
 import { Switch, StyleSheet, View } from 'react-native';
-import { AppText, Button, Card, colors, Notice, Page } from '@/components/security-ui';
-import { getGuardSession, logoutGuard, type GuardSession } from '@/services/api';
+import { AppText, Button, Card, colors, Field, Notice, Page } from '@/components/security-ui';
+import {
+  getGuardSession,
+  logoutGuard,
+  requestMobileEmailChange,
+  verifyMobileOldEmailOtp,
+  verifyMobileNewEmailOtp,
+  type GuardSession,
+} from '@/services/api';
 
 export default function ProfileScreen() {
   const [session, setSession] = useState<GuardSession | null>(getGuardSession());
   const [notifications, setNotifications] = useState(true);
   const [sound, setSound] = useState(true);
+
+  // Change Email State
+  const [showChangeEmail, setShowChangeEmail] = useState(false);
+  const [emailStep, setEmailStep] = useState<'input' | 'verify_old' | 'verify_new' | 'done'>('input');
+  const [newEmail, setNewEmail] = useState('');
+  const [oldEmailOtp, setOldEmailOtp] = useState('');
+  const [newEmailOtp, setNewEmailOtp] = useState('');
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [emailError, setEmailError] = useState('');
+  const [emailMessage, setEmailMessage] = useState('');
 
   useEffect(() => {
     setSession(getGuardSession());
@@ -27,6 +45,66 @@ export default function ProfileScreen() {
   const handleLogout = async () => {
     await logoutGuard();
     router.replace('/login');
+  };
+
+  const handleRequestEmailChange = async () => {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail.trim())) {
+      setEmailError('Please enter a valid new email address.');
+      return;
+    }
+    setEmailError('');
+    setEmailLoading(true);
+    try {
+      const res = await requestMobileEmailChange(newEmail.trim().toLowerCase());
+      if (res.ok) {
+        setEmailStep('verify_old');
+        setEmailMessage(res.message || 'Verification code sent to current email.');
+      } else {
+        setEmailError(res.error || 'Failed to request email change.');
+      }
+    } catch {
+      setEmailError('Network failure while requesting email change.');
+    } finally {
+      setEmailLoading(false);
+    }
+  };
+
+  const handleVerifyOldEmail = async () => {
+    setEmailError('');
+    setEmailLoading(true);
+    try {
+      const res = await verifyMobileOldEmailOtp(oldEmailOtp.trim());
+      if (res.ok) {
+        setEmailStep('verify_new');
+        setEmailMessage('Current email verified! Code sent to new email.');
+      } else {
+        setEmailError(res.error || 'Invalid verification code.');
+      }
+    } catch {
+      setEmailError('Network failure while verifying code.');
+    } finally {
+      setEmailLoading(false);
+    }
+  };
+
+  const handleVerifyNewEmail = async () => {
+    setEmailError('');
+    setEmailLoading(true);
+    try {
+      const res = await verifyMobileNewEmailOtp(newEmailOtp.trim());
+      if (res.ok) {
+        setEmailStep('done');
+        if (session) {
+          setSession({ ...session, email: res.updatedEmail || newEmail });
+        }
+      } else {
+        setEmailError(res.error || 'Invalid verification code.');
+      }
+    } catch {
+      setEmailError('Network failure while updating email.');
+    } finally {
+      setEmailLoading(false);
+    }
   };
 
   const guardName = session?.name || 'Security Officer';
@@ -46,6 +124,106 @@ export default function ProfileScreen() {
           <View style={styles.dot} />
           <AppText style={styles.dutyText}>On Duty · {gateName} · {guardRole}</AppText>
         </View>
+      </Card>
+
+      <AppText style={styles.section}>ACCOUNT SECURITY</AppText>
+      <Card style={styles.settings}>
+        {!showChangeEmail ? (
+          <Button
+            label="Change Registered Work Email"
+            icon={Mail}
+            variant="outline"
+            onPress={() => setShowChangeEmail(true)}
+          />
+        ) : (
+          <View style={{ gap: 12 }}>
+            <AppText style={{ fontWeight: '700', fontSize: 15, color: colors.ink }}>
+              Change Registered Email
+            </AppText>
+            {emailStep === 'input' && (
+              <>
+                <Field
+                  label="New Work Email"
+                  value={newEmail}
+                  onChangeText={setNewEmail}
+                  placeholder="new.officer@dsvv.edu.in"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                />
+                {emailError ? <Notice tone="red">{emailError}</Notice> : null}
+                {emailMessage ? <Notice tone="green">{emailMessage}</Notice> : null}
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <Button
+                    label="Cancel"
+                    variant="outline"
+                    onPress={() => { setShowChangeEmail(false); setEmailError(''); setEmailMessage(''); }}
+                    style={{ flex: 1 }}
+                  />
+                  <Button
+                    label={emailLoading ? 'Sending...' : 'Send OTP'}
+                    onPress={handleRequestEmailChange}
+                    disabled={emailLoading || !newEmail}
+                    style={{ flex: 1 }}
+                  />
+                </View>
+              </>
+            )}
+            {emailStep === 'verify_old' && (
+              <>
+                <Notice tone="blue">
+                  Enter 6-digit code sent to your CURRENT email ({guardEmail}).
+                </Notice>
+                <Field
+                  label="Current Email OTP"
+                  value={oldEmailOtp}
+                  onChangeText={(t) => setOldEmailOtp(t.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="000000"
+                  keyboardType="number-pad"
+                  maxLength={6}
+                />
+                {emailError ? <Notice tone="red">{emailError}</Notice> : null}
+                <Button
+                  label={emailLoading ? 'Verifying...' : 'Verify Current Email'}
+                  onPress={handleVerifyOldEmail}
+                  disabled={emailLoading || oldEmailOtp.length < 6}
+                />
+              </>
+            )}
+            {emailStep === 'verify_new' && (
+              <>
+                <Notice tone="blue">
+                  Enter 6-digit code sent to your NEW email ({newEmail}).
+                </Notice>
+                <Field
+                  label="New Email OTP"
+                  value={newEmailOtp}
+                  onChangeText={(t) => setNewEmailOtp(t.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="000000"
+                  keyboardType="number-pad"
+                  maxLength={6}
+                />
+                {emailError ? <Notice tone="red">{emailError}</Notice> : null}
+                <Button
+                  label={emailLoading ? 'Confirming...' : 'Confirm & Update Email'}
+                  onPress={handleVerifyNewEmail}
+                  disabled={emailLoading || newEmailOtp.length < 6}
+                />
+              </>
+            )}
+            {emailStep === 'done' && (
+              <>
+                <Notice tone="green">
+                  Email successfully updated to {newEmail}! Notifications sent.
+                </Notice>
+                <Button
+                  label="Close"
+                  variant="outline"
+                  onPress={() => { setShowChangeEmail(false); setEmailStep('input'); }}
+                />
+              </>
+            )}
+          </View>
+        )}
       </Card>
 
       <AppText style={styles.section}>DEVICE & ALERT PREFERENCES</AppText>
@@ -100,23 +278,22 @@ function Preference({
   value,
   onChange,
 }: {
-  icon: LucideIcon;
+  icon: any;
   label: string;
   value: boolean;
   onChange: (value: boolean) => void;
 }) {
   return (
-    <View style={styles.row}>
-      <View style={styles.settingIcon}>
-        <Icon size={18} color={colors.blue} />
+    <View style={styles.preference}>
+      <View style={styles.preferenceLabel}>
+        <Icon size={18} color={colors.ink} />
+        <AppText style={styles.preferenceText}>{label}</AppText>
       </View>
-      <AppText style={styles.settingLabel}>{label}</AppText>
       <Switch
-        accessibilityLabel={label}
         value={value}
         onValueChange={onChange}
-        trackColor={{ false: '#D5DCE6', true: '#9BBFFF' }}
-        thumbColor={value ? colors.blue : '#FFFFFF'}
+        trackColor={{ false: colors.border, true: colors.blue }}
+        thumbColor={colors.white}
       />
     </View>
   );
@@ -127,74 +304,130 @@ function MenuRow({
   label,
   caption,
 }: {
-  icon: LucideIcon;
+  icon: any;
   label: string;
   caption: string;
 }) {
   return (
-    <View style={styles.row}>
-      <View style={styles.settingIcon}>
+    <View style={styles.menuRow}>
+      <View style={styles.menuIcon}>
         <Icon size={18} color={colors.blue} />
       </View>
-      <View style={styles.menuCopy}>
-        <AppText style={styles.settingLabel}>{label}</AppText>
-        <AppText style={styles.caption}>{caption}</AppText>
+      <View style={styles.menuBody}>
+        <AppText style={styles.menuLabel}>{label}</AppText>
+        <AppText style={styles.menuCaption}>{caption}</AppText>
       </View>
-      <ChevronRight size={17} color={colors.muted} />
+      <ChevronRight size={18} color={colors.muted} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  identity: { alignItems: 'center', paddingVertical: 24, gap: 8 },
+  identity: {
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 24,
+  },
   avatar: {
     width: 68,
     height: 68,
-    borderRadius: 24,
+    borderRadius: 34,
     backgroundColor: colors.blueSoft,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 4,
   },
-  name: { fontSize: 20, fontWeight: '800', color: colors.ink },
-  email: { color: colors.muted, fontSize: 13 },
+  name: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: colors.ink,
+  },
+  email: {
+    fontSize: 13,
+    color: colors.muted,
+  },
   duty: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    backgroundColor: colors.greenSoft,
+    gap: 6,
     marginTop: 4,
   },
-  dot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: colors.green },
-  dutyText: { color: colors.green, fontSize: 11, fontWeight: '700' },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.green,
+  },
+  dutyText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.green,
+  },
   section: {
     fontSize: 11,
-    color: colors.muted,
     fontWeight: '800',
-    letterSpacing: 1.2,
-    marginTop: 6,
+    color: colors.muted,
+    letterSpacing: 0.8,
+    marginTop: 8,
+    marginBottom: -4,
   },
-  settings: { paddingVertical: 4, paddingHorizontal: 14 },
-  row: { flexDirection: 'row', alignItems: 'center', minHeight: 60, gap: 12 },
-  settingIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
+  settings: {
+    padding: 12,
+  },
+  preference: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+  },
+  preferenceLabel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  preferenceText: {
+    fontSize: 14,
+    color: colors.ink,
+  },
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.border,
+    marginVertical: 4,
+  },
+  menuRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 8,
+  },
+  menuIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
     backgroundColor: colors.blueSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  settingLabel: { color: colors.ink, fontSize: 13, fontWeight: '700', flex: 1 },
-  menuCopy: { flex: 1, gap: 2 },
-  caption: { color: colors.muted, fontSize: 11 },
-  divider: { height: 1, backgroundColor: colors.line, marginLeft: 48 },
-  version: {
+  menuBody: {
+    flex: 1,
+    gap: 2,
+  },
+  menuLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.ink,
+  },
+  menuCaption: {
+    fontSize: 11,
     color: colors.muted,
+  },
+  version: {
     fontSize: 10,
-    letterSpacing: 1,
+    fontWeight: '700',
+    color: colors.muted,
     textAlign: 'center',
-    paddingVertical: 8,
+    letterSpacing: 0.5,
+    marginTop: 8,
+    marginBottom: 16,
   },
 });

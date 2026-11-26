@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { SESSION_COOKIE, currentSession, signOutToken } from "@/lib/server/auth";
 import { audit } from "@/lib/server/audit";
 import { bootstrap } from "@/lib/server/http";
+import { logSecurityEvent } from "@/lib/server/services/security-audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,6 +22,11 @@ export async function POST() {
       entity: "user",
       entityId: session.userId,
       summary: `${session.name} signed out.`,
+    });
+    void logSecurityEvent({
+      userId: session.userId,
+      eventType: "logout",
+      description: `${session.name} signed out of session.`,
     });
   }
   if (token) await signOutToken(token);

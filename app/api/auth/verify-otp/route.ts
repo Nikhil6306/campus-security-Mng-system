@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 
 import { AuthError, SESSION_COOKIE } from "@/lib/server/auth";
 import { bootstrap, isSecureRequest, readBody } from "@/lib/server/http";
-import { verifyPasswordResetOtp } from "@/lib/server/services/otp";
+import { verifyOtpCode, verifyPasswordResetOtp } from "@/lib/server/services/otp";
 import { parse, verifyOtpSchema } from "@/lib/server/validation";
 
 export const runtime = "nodejs";
@@ -13,23 +13,40 @@ export async function POST(request: Request) {
   try {
     bootstrap();
     const input = parse(verifyOtpSchema, await readBody(request));
-    const result = await verifyPasswordResetOtp(input.email, input.otp);
+    const purpose = input.purpose ?? "password_reset";
 
-    // Set recovery token in session cookie so subsequent reset password calls are authorized
-    if (result.recoveryToken) {
-      const store = await cookies();
-      store.set(SESSION_COOKIE, result.recoveryToken, {
-        httpOnly: true,
-        sameSite: "lax",
-        secure: isSecureRequest(request),
-        path: "/",
-        maxAge: 15 * 60, // 15 minutes recovery window
+    if (purpose === "password_reset") {
+      const result = await verifyPasswordResetOtp(input.email, input.otp);
+
+      // Set recovery token in session cookie so subsequent reset password calls are authorized
+      if (result.recoveryToken) {
+        const store = await cookies();
+        store.set(SESSION_COOKIE, result.recoveryToken, {
+          httpOnly: true,
+          sameSite: "lax",
+          secure: isSecureRequest(request),
+          path: "/",
+          maxAge: 15 * 60, // 15 minutes recovery window
+        });
+      }
+
+      return NextResponse.json({
+        ok: true,
+        data: { recoveryToken: result.recoveryToken },
+        message: result.message,
       });
     }
 
+    // Generic verification for other purposes
+    const result = await verifyOtpCode({
+      email: input.email,
+      otp: input.otp,
+      purpose,
+    });
+
     return NextResponse.json({
       ok: true,
-      data: { recoveryToken: result.recoveryToken },
+      data: { verifiedToken: result.verifiedToken },
       message: result.message,
     });
   } catch (error) {

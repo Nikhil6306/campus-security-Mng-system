@@ -139,7 +139,7 @@ const TEACHERS = [
 ] as const;
 
 const GUARDS = [
-  ["GRD-001", "SEC-2001", "Amit Kumar", "9820011001", "amit.kumar@dsvv.edu.in", "Morning", "06:00", "14:00", "Main Gate", "On Duty", "2021-04-12", "9820099001", "Shivalik Nagar, Haridwar"],
+  ["GRD-001", "SEC-2001", "Ramu Guard", "9820011001", "r62871851@gmail.com", "Morning", "06:00", "14:00", "Main Gate", "On Duty", "2021-04-12", "9820099001", "Shivalik Nagar, Haridwar"],
   ["GRD-002", "SEC-2002", "Sunil Thapa", "9820011002", "sunil.thapa@dsvv.edu.in", "Evening", "14:00", "22:00", "Main Gate", "Active", "2020-08-03", "9820099002", "Jwalapur, Haridwar"],
   ["GRD-003", "SEC-2003", "Rajesh Bisht", "9820011003", "rajesh.bisht@dsvv.edu.in", "Night", "22:00", "06:00", "Service Gate", "Off Duty", "2019-11-25", "9820099003", "Bahadrabad, Haridwar"],
   ["GRD-004", "SEC-2004", "Pooja Rawat", "9820011004", "pooja.rawat@dsvv.edu.in", "Morning", "06:00", "14:00", "Hostel Gate", "On Duty", "2022-01-17", "9820099004", "Kankhal, Haridwar"],
@@ -349,26 +349,27 @@ function seedGuardDuty(): void {
 
   // Staffing requirements
   const staffing = [
-    ["Main Gate", "Morning", 2],
-    ["Main Gate", "Evening", 2],
-    ["Main Gate", "Night", 1],
-    ["Service Gate", "Morning", 1],
-    ["Service Gate", "Evening", 1],
-    ["Service Gate", "Night", 1],
-    ["Hostel Gate", "Morning", 1],
-    ["Hostel Gate", "Evening", 1],
-    ["Hostel Gate", "Night", 1],
-    ["Sports Gate", "Morning", 1],
-    ["Sports Gate", "Evening", 1],
-    ["Sports Gate", "Night", 0],
+    ["Main Gate", "Morning", 2, 3],
+    ["Main Gate", "Evening", 2, 3],
+    ["Main Gate", "Night", 1, 2],
+    ["Service Gate", "Morning", 1, 2],
+    ["Service Gate", "Evening", 1, 2],
+    ["Service Gate", "Night", 1, 1],
+    ["Hostel Gate", "Morning", 1, 2],
+    ["Hostel Gate", "Evening", 1, 2],
+    ["Hostel Gate", "Night", 1, 1],
+    ["Sports Gate", "Morning", 1, 2],
+    ["Sports Gate", "Evening", 1, 2],
+    ["Sports Gate", "Night", 1, 1],
   ] as const;
 
-  for (const [gate, shift, required] of staffing) {
+  for (const [gate, shift, minGuards, idealGuards] of staffing) {
+    const id = `REQ-${gate.replace(/\s+/g, "").toUpperCase()}-${shift.toUpperCase()}`;
     run(
-      `INSERT INTO gate_staffing_requirements(gate, shift_type, required_guards, notes, updated_at)
-       VALUES (?,?,?, 'Standard security baseline', ?)
-       ON CONFLICT(gate, shift_type) DO UPDATE SET required_guards = excluded.required_guards`,
-      [gate, shift, required, stamp],
+      `INSERT INTO gate_staffing_requirements(id, gate, shift_type, min_guards, ideal_guards, updated_at)
+       VALUES (?,?,?,?,?,?)
+       ON CONFLICT(gate, shift_type) DO UPDATE SET min_guards = excluded.min_guards, ideal_guards = excluded.ideal_guards, updated_at = excluded.updated_at`,
+      [id, gate, shift, minGuards, idealGuards, stamp],
     );
   }
 
@@ -377,35 +378,35 @@ function seedGuardDuty(): void {
     [
       "RTE-001",
       "Perimeter & Gate Security Route",
-      "Perimeter boundary, gate posts, vehicle gates, and parking areas",
+      "Perimeter",
       JSON.stringify(["Main Gate", "Service Gate", "Sports Gate", "Parking Area"]),
-      "Every 2 hours",
+      2,
       1,
     ],
     [
       "RTE-002",
       "Academic & Administration Route",
-      "Admin building, server corridor, central library, and auditorium",
+      "Academic Zone",
       JSON.stringify(["Admin Block", "Central Library", "Science Block", "Auditorium"]),
-      "Every 3 hours",
+      3,
       1,
     ],
     [
       "RTE-003",
       "Hostel & Residential Zone Route",
-      "Student residential halls, emergency exits, and health bay",
+      "Residential Zone",
       JSON.stringify(["Ganga Hostel", "Yamuna Hostel", "Saraswati Hostel", "Health Centre"]),
-      "Every 2 hours",
+      2,
       1,
     ],
   ] as const;
 
-  for (const [id, name, desc, zones, freq, active] of routes) {
+  for (const [id, name, zone, gates, freq, active] of routes) {
     run(
-      `INSERT INTO patrol_routes(id, name, description, zones, frequency, active, created_at, updated_at)
-       VALUES (?,?,?,?,?,?,?,?)
-       ON CONFLICT(id) DO UPDATE SET name = excluded.name, description = excluded.description`,
-      [id, name, desc, zones, freq, active, stamp, stamp],
+      `INSERT INTO patrol_routes(id, name, zone, applicable_gates, frequency_hours, active, created_at)
+       VALUES (?,?,?,?,?,?,?)
+       ON CONFLICT(id) DO UPDATE SET name = excluded.name, zone = excluded.zone, applicable_gates = excluded.applicable_gates, frequency_hours = excluded.frequency_hours, active = excluded.active`,
+      [id, name, zone, gates, freq, active, stamp],
     );
   }
 
@@ -483,12 +484,12 @@ function seedGuardDuty(): void {
     ],
   ] as const;
 
-  for (const [id, routeId, name, loc, inst, items, photoReq, sort] of checkpoints) {
+  for (const [id, routeId, title, loc, inst, items, photoReq, sort] of checkpoints) {
     run(
-      `INSERT INTO patrol_checkpoints(id, route_id, name, location, instructions, inspection_items, photo_required, sort_order, active, created_at, updated_at)
-       VALUES (?,?,?,?,?,?,?,?,1,?,?)
-       ON CONFLICT(id) DO UPDATE SET name = excluded.name, instructions = excluded.instructions`,
-      [id, routeId, name, loc, inst, items, photoReq, sort, stamp, stamp],
+      `INSERT INTO patrol_checkpoints(id, route_id, title, location, instructions, required_items, photo_required, order_index, active)
+       VALUES (?,?,?,?,?,?,?,?,1)
+       ON CONFLICT(id) DO UPDATE SET title = excluded.title, location = excluded.location, instructions = excluded.instructions, required_items = excluded.required_items, photo_required = excluded.photo_required, order_index = excluded.order_index, active = excluded.active`,
+      [id, routeId, title, loc, inst, items, photoReq, sort],
     );
   }
 }
@@ -720,7 +721,7 @@ function seedActivity(): void {
 export const DEMO_ACCOUNTS = [
   { id: "USR-001", email: "superadmin@dsvv.edu.in", name: "Campus Security Director", role: "super_admin", refId: null, gate: null, defaultPassword: "Super@123" },
   { id: "USR-002", email: "admin@dsvv.edu.in", name: "Security Administrator", role: "admin", refId: null, gate: null, defaultPassword: "Admin@123" },
-  { id: "USR-003", email: "security@dsvv.edu.in", name: "Amit Kumar", role: "security", refId: "GRD-001", gate: "Main Gate", defaultPassword: "Security@123" },
+  { id: "USR-003", email: "r62871851@gmail.com", name: "Ramu Guard", role: "security", refId: "GRD-001", gate: "Main Gate", defaultPassword: "Guard@123" },
   { id: "USR-004", email: "sunil.thapa@dsvv.edu.in", name: "Sunil Thapa", role: "security", refId: "GRD-002", gate: "Main Gate", defaultPassword: "Security@123" },
   { id: "USR-005", email: "pooja.rawat@dsvv.edu.in", name: "Pooja Rawat", role: "security", refId: "GRD-004", gate: "Hostel Gate", defaultPassword: "Security@123" },
   // TCH-008 = Dr. Rajeshwari Trivedi · HoD, Department of Education

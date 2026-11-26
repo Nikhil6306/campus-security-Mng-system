@@ -16,6 +16,8 @@ export const colors = {
   ink: '#172033',
   muted: '#5F6F86',
   line: '#DCE5F2',
+  border: '#DCE5F2',
+  slateSoft: '#F0F4F8',
   green: '#168A55',
   greenSoft: '#E8F7F0',
   red: '#D64545',
@@ -29,7 +31,7 @@ export function AppText({ children, style, ...props }: ComponentProps<typeof Tex
 }
 
 export function IconBox({ icon: Icon, color = colors.blue, size = 21, background = colors.blueSoft }: {
-  icon: LucideIcon;
+  icon: any;
   color?: string;
   size?: number;
   background?: string;
@@ -117,25 +119,26 @@ export function Card({ children, style }: { children: ReactNode; style?: object 
   return <View style={[styles.card, style]}>{children}</View>;
 }
 
-export function Button({ label, onPress, icon: Icon, variant = 'primary', disabled = false }: {
+export function Button({ label, onPress, icon: Icon, variant = 'primary', disabled = false, style }: {
   label: string;
   onPress: () => void;
-  icon?: LucideIcon;
+  icon?: any;
   variant?: 'primary' | 'secondary' | 'danger' | 'outline';
   disabled?: boolean;
+  style?: any;
 }) {
   const buttonStyle = variant === 'danger' ? styles.buttonDanger : variant === 'secondary' ? styles.buttonSecondary : variant === 'outline' ? styles.buttonOutline : styles.buttonPrimary;
   const textStyle = variant === 'secondary' ? styles.buttonSecondaryText : variant === 'outline' ? styles.buttonOutlineText : styles.buttonText;
   const iconColor = variant === 'secondary' ? colors.blue : variant === 'outline' ? colors.ink : colors.white;
   return (
-    <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={({ pressed }) => [styles.button, buttonStyle, pressed && styles.pressed, disabled && styles.disabled]}>
+    <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={({ pressed }) => [styles.button, buttonStyle, pressed && styles.pressed, disabled && styles.disabled, style]}>
       {Icon ? <Icon size={18} color={iconColor} strokeWidth={2.2} /> : null}
       <AppText style={textStyle}>{label}</AppText>
     </Pressable>
   );
 }
 
-export function Field({ label, value, onChangeText, placeholder, keyboardType, secureTextEntry, right, multiline = false, autoCapitalize }: {
+export function Field({ label, value, onChangeText, placeholder, keyboardType, secureTextEntry, right, multiline = false, autoCapitalize, maxLength }: {
   label: string;
   value: string;
   onChangeText: (value: string) => void;
@@ -145,12 +148,13 @@ export function Field({ label, value, onChangeText, placeholder, keyboardType, s
   right?: ReactNode;
   multiline?: boolean;
   autoCapitalize?: ComponentProps<typeof TextInput>['autoCapitalize'];
+  maxLength?: number;
 }) {
   return (
     <View style={styles.fieldWrap}>
       <AppText style={styles.fieldLabel}>{label}</AppText>
       <View style={[styles.inputShell, multiline && styles.multilineShell]}>
-        <TextInput accessibilityLabel={label} value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor="#9AA7B8" keyboardType={keyboardType} secureTextEntry={secureTextEntry} multiline={multiline} autoCapitalize={autoCapitalize} style={[styles.input, multiline && styles.multilineInput]} />
+        <TextInput accessibilityLabel={label} value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor="#9AA7B8" keyboardType={keyboardType} secureTextEntry={secureTextEntry} multiline={multiline} autoCapitalize={autoCapitalize} maxLength={maxLength} style={[styles.input, multiline && styles.multilineInput]} />
         {right}
       </View>
     </View>
@@ -163,9 +167,9 @@ export function Pill({ label, tone = 'blue' }: { label: string; tone?: 'blue' | 
   return <View style={[styles.pill, toneStyle]}><AppText style={[styles.pillText, textStyle]}>{label}</AppText></View>;
 }
 
-export function Notice({ children, tone = 'blue' }: { children: ReactNode; tone?: 'blue' | 'red' | 'green' }) {
-  const noticeStyle = tone === 'red' ? styles.noticeRed : tone === 'green' ? styles.noticeGreen : styles.noticeBlue;
-  const noticeText = tone === 'red' ? styles.noticeRedText : tone === 'green' ? styles.noticeGreenText : styles.noticeBlueText;
+export function Notice({ children, tone = 'blue' }: { children: ReactNode; tone?: 'blue' | 'red' | 'green' | 'amber' }) {
+  const noticeStyle = tone === 'red' ? styles.noticeRed : tone === 'green' ? styles.noticeGreen : tone === 'amber' ? styles.pillAmber : styles.noticeBlue;
+  const noticeText = tone === 'red' ? styles.noticeRedText : tone === 'green' ? styles.noticeGreenText : tone === 'amber' ? styles.pillAmberText : styles.noticeBlueText;
   return <View style={[styles.notice, noticeStyle]}><AppText style={[styles.noticeText, noticeText]}>{children}</AppText></View>;
 }
 

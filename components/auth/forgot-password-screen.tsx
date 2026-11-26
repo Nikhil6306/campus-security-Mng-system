@@ -15,6 +15,14 @@ import { validateEmail } from "@/lib/validation";
 type Step = "email" | "otp" | "password" | "done";
 
 const RESEND_COOLDOWN_SECONDS = 60;
+const OTP_EXPIRY_SECONDS = 300; // 5 minutes
+
+function maskEmail(email: string): string {
+  const [local, domain] = email.split("@");
+  if (!local || !domain) return email;
+  if (local.length <= 2) return `${local[0]}*@${domain}`;
+  return `${local[0]}${"*".repeat(Math.min(local.length - 2, 4))}${local[local.length - 1]}@${domain}`;
+}
 
 export function ForgotPasswordScreen() {
   const { forgotPassword, verifyOtp, resendOtp, resetPassword } = useAuth();
@@ -32,10 +40,14 @@ export function ForgotPasswordScreen() {
 
   // Resend cooldown timer
   const [resendCooldown, setResendCooldown] = React.useState(0);
+  const [expiryCountdown, setExpiryCountdown] = React.useState(0);
   const cooldownRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const expiryRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
   const startCooldown = React.useCallback(() => {
     setResendCooldown(RESEND_COOLDOWN_SECONDS);
+    setExpiryCountdown(OTP_EXPIRY_SECONDS);
+
     if (cooldownRef.current) clearInterval(cooldownRef.current);
     cooldownRef.current = setInterval(() => {
       setResendCooldown((prev) => {
@@ -46,9 +58,23 @@ export function ForgotPasswordScreen() {
         return prev - 1;
       });
     }, 1000);
+
+    if (expiryRef.current) clearInterval(expiryRef.current);
+    expiryRef.current = setInterval(() => {
+      setExpiryCountdown((prev) => {
+        if (prev <= 1) {
+          if (expiryRef.current) clearInterval(expiryRef.current);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
   }, []);
 
-  React.useEffect(() => () => { if (cooldownRef.current) clearInterval(cooldownRef.current); }, []);
+  React.useEffect(() => () => {
+    if (cooldownRef.current) clearInterval(cooldownRef.current);
+    if (expiryRef.current) clearInterval(expiryRef.current);
+  }, []);
 
   // ── Step 1: Email ───────────────────────────────────────────────────
   const handleEmailSubmit = async (e: React.FormEvent) => {
@@ -221,7 +247,10 @@ export function ForgotPasswordScreen() {
             <div className="space-y-1.5">
               <h1 className="text-2xl font-semibold tracking-tight">Enter verification code</h1>
               <p className="text-sm text-muted-foreground">
-                A 6-digit code was sent to <span className="font-medium text-foreground">{email}</span>. It is valid for 10 minutes.
+                A 6-digit code was sent to <span className="font-medium text-foreground">{maskEmail(email)}</span>.
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Code expires in: <span className="font-semibold text-primary">{Math.floor(expiryCountdown / 60)}:{(expiryCountdown % 60).toString().padStart(2, "0")}</span>
               </p>
             </div>
 
@@ -250,7 +279,12 @@ export function ForgotPasswordScreen() {
                 </div>
               </FormField>
 
-              <Button type="submit" className="w-full py-5 font-semibold text-base shadow-sm" loading={submitting}>
+              <Button
+                type="submit"
+                className="w-full py-5 font-semibold text-base shadow-sm"
+                loading={submitting}
+                disabled={otp.length < 6 || expiryCountdown <= 0}
+              >
                 Verify Code
               </Button>
 

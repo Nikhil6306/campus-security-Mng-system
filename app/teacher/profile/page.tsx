@@ -24,6 +24,7 @@ import { useTeacherMeetings } from "@/components/teacher/use-teacher-meetings";
 import { api, errorMessage } from "@/lib/api";
 import { AVAILABILITY_STATUSES } from "@/lib/types";
 import { initials } from "@/lib/utils";
+import { ChangeEmailDialog } from "@/components/auth/change-email-dialog";
 
 /**
  * The teacher's own record.
@@ -36,6 +37,7 @@ export default function TeacherProfilePage() {
   const { session } = useAuth();
   const { db, run } = useData();
   const { requests, todays, upcoming, history } = useTeacherMeetings();
+  const [changeEmailOpen, setChangeEmailOpen] = React.useState(false);
 
   const teacher = db.teachers.find((t) => t.id === session?.refId);
   const [saving, setSaving] = React.useState(false);
@@ -120,10 +122,21 @@ export default function TeacherProfilePage() {
             <DetailRow
               label="Email"
               value={
-                <span className="inline-flex items-center gap-1.5">
-                  <Mail className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
-                  {teacher.email}
-                </span>
+                <div className="flex items-center justify-between gap-3 w-full">
+                  <span className="inline-flex items-center gap-1.5">
+                    <Mail className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+                    {teacher.email}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    type="button"
+                    className="h-7 text-xs"
+                    onClick={() => setChangeEmailOpen(true)}
+                  >
+                    Change Email
+                  </Button>
+                </div>
               }
             />
             <DetailRow
@@ -203,6 +216,15 @@ export default function TeacherProfilePage() {
           </Button>
         </div>
       </Card>
+
+      <ChangeEmailDialog
+        open={changeEmailOpen}
+        onOpenChange={setChangeEmailOpen}
+        currentEmail={teacher.email}
+        onSuccess={(newEmail) => {
+          teacher.email = newEmail;
+        }}
+      />
     </>
   );
 }

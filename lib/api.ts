@@ -492,10 +492,20 @@ export const api = {
     post<AuthSession | null>("/api/auth/signup", payload),
   forgotPassword: (email: string) =>
     post<{ ok: boolean; message: string }>("/api/auth/forgot-password", { email }),
-  verifyOtp: (email: string, otp: string) =>
-    post<{ ok: boolean; data: { recoveryToken?: string }; message: string }>("/api/auth/verify-otp", { email, otp }),
+  sendOtp: (email: string, purpose = "password_reset") =>
+    post<{ ok: boolean; message: string }>("/api/auth/send-otp", { email, purpose }),
+  verifyOtp: (email: string, otp: string, purpose?: string) =>
+    post<{ ok: boolean; data: { recoveryToken?: string; verifiedToken?: string }; message: string }>("/api/auth/verify-otp", { email, otp, purpose }),
   resendOtp: (email: string) =>
     post<{ ok: boolean; message: string }>("/api/auth/resend-otp", { email }),
+  completeSignup: (email: string, otp: string) =>
+    post<{ ok: boolean; message: string }>("/api/auth/complete-signup", { email, otp }),
+  requestEmailChange: (newEmail: string) =>
+    post<{ ok: boolean; message: string }>("/api/auth/change-email/request", { newEmail }),
+  verifyOldEmailOtp: (otp: string) =>
+    post<{ ok: boolean; message: string; newEmail: string }>("/api/auth/change-email/verify-old", { otp }),
+  verifyNewEmailOtp: (otp: string) =>
+    post<{ ok: boolean; message: string; updatedEmail: string }>("/api/auth/change-email/verify-new", { otp }),
   resetPassword: (password: string, token?: string, email?: string, otp?: string) =>
     post<{ ok: boolean; message: string }>("/api/auth/reset-password", { password, email, otp }, {
       headers: token ? { Authorization: `Bearer ${token}` } : undefined,

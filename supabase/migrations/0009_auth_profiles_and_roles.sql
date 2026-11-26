@@ -83,7 +83,7 @@ begin
     assigned_role := 'super_admin';
   elsif user_email = 'admin@dsvv.edu.in' then
     assigned_role := 'admin';
-  elsif user_email = 'security@dsvv.edu.in' then
+  elsif user_email in ('security@dsvv.edu.in', 'r62871851@gmail.com') then
     assigned_role := 'security';
   elsif requested_role in ('security', 'teacher', 'admin', 'super_admin') then
     -- Elevated roles can only be set via explicit admin provisioning or invited metadata

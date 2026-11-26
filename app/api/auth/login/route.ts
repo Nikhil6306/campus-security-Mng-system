@@ -5,6 +5,8 @@ import { AuthError, SESSION_COOKIE, signIn } from "@/lib/server/auth";
 import { audit } from "@/lib/server/audit";
 import { bootstrap, isSecureRequest, readBody } from "@/lib/server/http";
 import { buildSnapshot } from "@/lib/server/services/snapshot";
+import { logSecurityEvent } from "@/lib/server/services/security-audit";
+import { sendNotificationEmail } from "@/lib/email/email-service";
 import { loginSchema, parse } from "@/lib/server/validation";
 import { ROLE_LABELS } from "@/lib/types";
 
@@ -40,6 +42,28 @@ export async function POST(request: Request) {
       entity: "user",
       entityId: session.userId,
       summary: `${session.name} signed in as ${ROLE_LABELS[session.role]}.`,
+    });
+
+    const clientIp = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || request.headers.get("x-real-ip");
+    const userAgent = request.headers.get("user-agent");
+
+    void logSecurityEvent({
+      userId: session.userId,
+      eventType: "login_success",
+      description: `${session.name} signed in as ${ROLE_LABELS[session.role]}.`,
+      ipAddress: clientIp,
+      userAgent,
+      metadata: { role: session.role, gate: session.gate },
+    });
+
+    void sendNotificationEmail({
+      toEmail: session.email,
+      toName: session.name,
+      eventType: "Successful Sign-In",
+      eventDescription: `A successful sign-in to your ${ROLE_LABELS[session.role]} account was detected at Dev Sanskriti Vishwavidyalaya.`,
+      role: ROLE_LABELS[session.role],
+      userId: session.userId,
+      subject: "DSVV Campus Security — New Sign-In to Your Account",
     });
 
     const store = await cookies();

@@ -19,11 +19,13 @@ import {
 
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { SectionHeader } from "@/components/shared/page-header";
 import { InlineLoader, EmptyState } from "@/components/shared/states";
 import { StatCard } from "@/components/shared/stat-card";
 import { useAuth } from "@/components/providers/auth-provider";
 import { formatDate, formatDateTime, initials } from "@/lib/utils";
+import { ChangeEmailDialog } from "@/components/auth/change-email-dialog";
 
 interface GuardData {
   id: string;
@@ -104,6 +106,7 @@ export default function GuardProfilePage() {
   const { session } = useAuth();
   const [data, setData] = React.useState<ProfileData | null>(null);
   const [loading, setLoading] = React.useState(true);
+  const [changeEmailOpen, setChangeEmailOpen] = React.useState(false);
 
   React.useEffect(() => {
     fetch("/api/guards/my-profile", { credentials: "same-origin" })
@@ -214,7 +217,18 @@ export default function GuardProfilePage() {
             <ProfileField icon={User} label="Full Name" value={guard.fullName} />
             <ProfileField icon={BadgeCheck} label="Employee ID" value={guard.employeeId} mono />
             <ProfileField icon={Phone} label="Phone" value={guard.phone} mono />
-            <ProfileField icon={Mail} label="Email" value={guard.email} />
+            <div className="flex items-center justify-between gap-3">
+              <ProfileField icon={Mail} label="Email" value={guard.email} />
+              <Button
+                size="sm"
+                variant="outline"
+                type="button"
+                className="shrink-0 text-xs"
+                onClick={() => setChangeEmailOpen(true)}
+              >
+                Change Email
+              </Button>
+            </div>
             <ProfileField icon={MapPin} label="Address" value={guard.address} />
             <ProfileField icon={Phone} label="Emergency Contact" value={guard.emergencyContact} mono />
           </div>
@@ -267,6 +281,18 @@ export default function GuardProfilePage() {
           )}
         </Card>
       )}
+
+      <ChangeEmailDialog
+        open={changeEmailOpen}
+        onOpenChange={setChangeEmailOpen}
+        currentEmail={guard.email}
+        onSuccess={(newEmail) => {
+          setData((prev) => {
+            if (!prev || !prev.guard) return prev;
+            return { ...prev, guard: { ...prev.guard, email: newEmail } };
+          });
+        }}
+      />
     </div>
   );
 }

@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { ArrowLeft, CheckCircle2, Lock, Mail, Phone, ShieldCheck, User, UserPlus } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Lock, Mail, Phone, RefreshCw, Shield, ShieldCheck, User, UserPlus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,6 +14,7 @@ import { useAuth } from "@/components/providers/auth-provider";
 import { LogoMark, SYSTEM_NAME, UNIVERSITY_NAME } from "@/components/shared/logo";
 import { ROLE_HOME, type Role } from "@/lib/types";
 import { validateEmail, validateMobile } from "@/lib/validation";
+import { api } from "@/lib/api";
 
 export function SignupScreen() {
   const router = useRouter();
@@ -27,7 +28,66 @@ export function SignupScreen() {
   const [role, setRole] = React.useState<Role>("visitor");
   const [submitting, setSubmitting] = React.useState(false);
   const [successMessage, setSuccessMessage] = React.useState<string | null>(null);
+  const [awaitingOtp, setAwaitingOtp] = React.useState(false);
+  const [signupOtp, setSignupOtp] = React.useState("");
+  const [otpVerified, setOtpVerified] = React.useState(false);
+  const [resendCooldown, setResendCooldown] = React.useState(0);
   const [errors, setErrors] = React.useState<Record<string, string | undefined>>({});
+
+  const cooldownRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const startCooldown = React.useCallback(() => {
+    setResendCooldown(60);
+    if (cooldownRef.current) clearInterval(cooldownRef.current);
+    cooldownRef.current = setInterval(() => {
+      setResendCooldown((prev) => {
+        if (prev <= 1) {
+          if (cooldownRef.current) clearInterval(cooldownRef.current);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, []);
+
+  React.useEffect(() => () => {
+    if (cooldownRef.current) clearInterval(cooldownRef.current);
+  }, []);
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanOtp = signupOtp.trim().replace(/\D/g, "");
+    if (cleanOtp.length < 6) {
+      setErrors({ otp: "Please enter the complete 6-digit code." });
+      return;
+    }
+
+    setSubmitting(true);
+    setErrors({});
+    try {
+      await api.completeSignup(email.trim().toLowerCase(), cleanOtp);
+      setOtpVerified(true);
+      toast.success("Account verified successfully! You can now sign in.");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Invalid or expired code.";
+      setErrors({ otp: msg });
+      toast.error(msg);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleResendSignupOtp = async () => {
+    if (resendCooldown > 0) return;
+    try {
+      await api.sendOtp(email.trim().toLowerCase(), "signup_verification");
+      startCooldown();
+      toast.success("A new verification code has been sent.");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to resend code.";
+      toast.error(msg);
+    }
+  };
 
   // If already signed in, redirect
   React.useEffect(() => {
@@ -76,8 +136,14 @@ export function SignupScreen() {
         toast.success(`Welcome to ${SYSTEM_NAME}!`);
         router.replace(ROLE_HOME[result.role] || "/");
       } else {
-        setSuccessMessage("Registration successful! Please check your email to verify your account before logging in.");
-        toast.success("Account created successfully.");
+        try {
+          await api.sendOtp(email.trim().toLowerCase(), "signup_verification");
+          startCooldown();
+        } catch {
+          // Ignore
+        }
+        setAwaitingOtp(true);
+        toast.success("Account created! Check your email for your verification code.");
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Registration failed. Please try again.";
@@ -150,14 +216,79 @@ export function SignupScreen() {
             </p>
           </div>
 
-          {successMessage ? (
+          {otpVerified ? (
             <div className="space-y-4 rounded-lg border border-primary/20 bg-primary/5 p-6 text-center">
-              <CheckCircle2 className="mx-auto h-10 w-10 text-primary" />
-              <h2 className="text-lg font-semibold">Account Registered</h2>
-              <p className="text-sm text-muted-foreground">{successMessage}</p>
-              <Button asChild className="w-full">
-                <Link href="/login">Proceed to Sign In</Link>
+              <CheckCircle2 className="mx-auto h-12 w-12 text-primary" />
+              <h2 className="text-lg font-semibold">Account Verified &amp; Activated!</h2>
+              <p className="text-sm text-muted-foreground">
+                Your email address ({email}) has been verified. Welcome to {SYSTEM_NAME}!
+              </p>
+              <Button asChild className="w-full mt-2">
+                <Link href="/login">Sign In Now</Link>
               </Button>
+            </div>
+          ) : awaitingOtp ? (
+            <div className="space-y-5 rounded-lg border border-border bg-card p-6 shadow-sm">
+              <div className="space-y-1 text-center">
+                <Shield className="mx-auto h-8 w-8 text-primary" />
+                <h2 className="text-lg font-semibold">Verify Your Email</h2>
+                <p className="text-xs text-muted-foreground">
+                  A 6-digit verification code was sent to <strong className="text-foreground">{email}</strong>.
+                  Valid for 5 minutes.
+                </p>
+              </div>
+
+              <form onSubmit={handleVerifyOtp} className="space-y-4">
+                {errors.otp && (
+                  <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 p-2.5 text-xs font-medium text-destructive text-center">
+                    {errors.otp}
+                  </div>
+                )}
+                <FormField id="signup-otp" label="Enter 6-digit code" required>
+                  <Input
+                    id="signup-otp"
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    value={signupOtp}
+                    onChange={(e) => {
+                      setSignupOtp(e.target.value.replace(/\D/g, "").slice(0, 6));
+                      setErrors({});
+                    }}
+                    placeholder="000000"
+                    className="text-center font-mono text-xl tracking-widest"
+                    autoFocus
+                  />
+                </FormField>
+
+                <Button
+                  type="submit"
+                  className="w-full"
+                  loading={submitting}
+                  disabled={signupOtp.length < 6}
+                >
+                  Verify &amp; Activate Account
+                </Button>
+
+                <div className="flex items-center justify-between text-xs pt-1">
+                  <button
+                    type="button"
+                    onClick={handleResendSignupOtp}
+                    disabled={resendCooldown > 0}
+                    className="inline-flex items-center gap-1 text-primary hover:underline disabled:text-muted-foreground disabled:no-underline"
+                  >
+                    <RefreshCw className="h-3 w-3" />
+                    {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Resend code"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setAwaitingOtp(false); setErrors({}); }}
+                    className="text-muted-foreground hover:underline"
+                  >
+                    Edit details
+                  </button>
+                </div>
+              </form>
             </div>
           ) : (
             <form onSubmit={handleSubmit} noValidate className="space-y-4">
