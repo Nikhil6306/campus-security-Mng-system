@@ -194,7 +194,8 @@ export async function signIn(email: string, password: string): Promise<SignInRes
       return { session, token: data.session.access_token };
     } catch (err) {
       if (err instanceof AuthError) throw err;
-      console.warn("[auth] Supabase sign-in encountered an issue, trying fallback:", err);
+      console.error("[auth] Supabase sign-in failed:", err);
+      throw new AuthError("Authentication service unavailable. Please try again.", 503);
     }
   }
 
@@ -494,61 +495,35 @@ export async function sessionForToken(token: string): Promise<AuthSession | null
     try {
       const admin = getSupabaseAdminClient();
 
-      // First try: validate the JWT directly with getUser (works while token is fresh).
+      // Always verify the JWT signature, expiry, and revocation via Supabase Auth.
+      // Expired or unsigned/tampered JWTs are strictly rejected (no grace window).
       const sb = getSupabaseServerClient(token);
       const { data: { user }, error } = await sb.auth.getUser(token);
 
-      let resolvedUserId: string | null = null;
-
-      if (!error && user) {
-        resolvedUserId = user.id;
-      } else {
-        // JWT may have expired (Supabase JWTs expire after 1 hour by default).
-        // Decode the payload manually to extract the `sub` claim – we don't
-        // need the signature for server-side profile lookup since we immediately
-        // re-verify identity against the admin client's profiles table.
-        try {
-          const parts = token.split(".");
-          if (parts.length === 3) {
-            const payload = JSON.parse(
-              Buffer.from(parts[1], "base64url").toString("utf8"),
-            ) as { sub?: string; exp?: number };
-            // Only honour tokens that are not excessively old (>= 24 h grace window).
-            const gracePeriodMs = 24 * 60 * 60 * 1000;
-            if (
-              payload.sub &&
-              payload.exp &&
-              Date.now() < payload.exp * 1000 + gracePeriodMs
-            ) {
-              resolvedUserId = payload.sub;
-            }
-          }
-        } catch {
-          // Malformed JWT – fall through to SQLite
-        }
+      if (error || !user) {
+        return null;
       }
 
-      if (resolvedUserId) {
-        const { data: profile } = await admin
-          .from("profiles")
-          .select("*")
-          .eq("id", resolvedUserId)
-          .single();
+      const { data: profile } = await admin
+        .from("profiles")
+        .select("*")
+        .eq("id", user.id)
+        .single();
 
-        if (profile && profile.active) {
-          return {
-            userId: resolvedUserId,
-            email: profile.email || "",
-            name: profile.full_name || profile.email?.split("@")[0] || "User",
-            role: profile.role as Role,
-            refId: profile.ref_id ?? undefined,
-            gate: profile.gate ?? undefined,
-            loginAt: profile.last_login_at || new Date().toISOString(),
-          };
-        }
+      if (profile && profile.active) {
+        return {
+          userId: user.id,
+          email: profile.email || "",
+          name: profile.full_name || profile.email?.split("@")[0] || "User",
+          role: profile.role as Role,
+          refId: profile.ref_id ?? undefined,
+          gate: profile.gate ?? undefined,
+          loginAt: profile.last_login_at || new Date().toISOString(),
+        };
       }
-    } catch (err) {
-      // Network issue or Supabase unavailable – fall through to SQLite session check.
+      return null;
+    } catch {
+      return null;
     }
   }
 

@@ -59,7 +59,7 @@ export function mapDepartment(r: Row): Department {
 
 export function mapVisitor(r: Row): Visitor {
   const mobileVal = toText(r.mobile_number) || toText(r.mobile);
-  const aadhaarVal = toText(r.aadhaar_number) || toText(r.id_number);
+  const idVal = toText(r.id_number);
   const photoVal = toOptText(r.photo_path) || toOptText(r.photo_url);
   const hasCarVal = toBool(r.has_car) || toBool(r.vehicle_required);
   const carNumVal = toOptText(r.car_number) || toOptText(r.vehicle_number);
@@ -69,8 +69,7 @@ export function mapVisitor(r: Row): Visitor {
     fullName: toText(r.full_name),
     mobileNumber: mobileVal,
     mobile: mobileVal,
-    aadhaarNumber: aadhaarVal,
-    idNumber: aadhaarVal,
+    idNumber: idVal,
     hasCar: hasCarVal,
     carNumber: carNumVal,
     photoPath: photoVal,
@@ -164,7 +163,7 @@ export function mapStudent(r: Row): Student {
 
 export function mapVisit(r: Row): VisitRequest {
   const mobileVal = toText(r.mobile_number) || toText(r.mobile);
-  const aadhaarVal = toText(r.aadhaar_number) || toText(r.id_number);
+  const idVal = toText(r.id_number);
   const photoVal = toOptText(r.photo_path) || toOptText(r.photo_url);
   const hasCarVal = toBool(r.has_car) || toBool(r.vehicle_required);
   const carNumVal = toOptText(r.car_number) || toOptText(r.vehicle_number);
@@ -175,8 +174,7 @@ export function mapVisit(r: Row): VisitRequest {
     fullName: toText(r.full_name),
     mobileNumber: mobileVal,
     mobile: mobileVal,
-    aadhaarNumber: aadhaarVal,
-    idNumber: aadhaarVal,
+    idNumber: idVal,
     hasCar: hasCarVal,
     carNumber: carNumVal,
     photoPath: photoVal,
@@ -189,7 +187,7 @@ export function mapVisit(r: Row): VisitRequest {
     whatsappCountryCode: toText(r.whatsapp_country_code) || "+91",
     whatsappNumber: toText(r.whatsapp_number),
     visitorType: (toOptText(r.visitor_type) || "Guest") as VisitRequest["visitorType"],
-    idType: (toOptText(r.id_type) || "Aadhaar Card") as VisitRequest["idType"],
+    idType: (toOptText(r.id_type) || "Driving Licence") as VisitRequest["idType"],
     purpose: (toOptText(r.purpose) || "Campus Visit") as VisitRequest["purpose"],
     purposeDetail: toOptText(r.purpose_detail),
     purposeMeta: toJson(r.purpose_meta, {}),
@@ -439,11 +437,6 @@ export const findVisit = (id: string): VisitRequest | undefined => {
 
 /**
  * Maps a guest row for application use.
- *
- * `aadhaar_ciphertext` is read but never mapped onto the returned object — the
- * only Aadhaar fragment that leaves this function is the last four digits, so
- * no caller can accidentally serialise a full number into an API response, a
- * log line or an export.
  */
 export function mapGuest(r: Row): VisitGuest {
   return {
@@ -452,8 +445,6 @@ export function mapGuest(r: Row): VisitGuest {
     position: toNum(r.position),
     fullName: toText(r.full_name),
     mobile: toText(r.mobile),
-    aadhaarLast4: toText(r.aadhaar_last4),
-    aadhaarStored: Boolean(toOptText(r.aadhaar_ciphertext)),
     relation: toText(r.relation),
     address: toText(r.address),
     createdAt: toText(r.created_at),

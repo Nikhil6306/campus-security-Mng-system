@@ -4,6 +4,7 @@ import type { VisitStatus } from "@/lib/types";
 import { STATUS_CODES } from "@/lib/types";
 import { findVisit, findVisitByToken, listGuests, readSettings } from "../repo";
 import { notFound } from "../errors";
+import { verifyPassTokenSignature } from "./pass-token";
 import { passUrlFor } from "../notification-service";
 import {
   messagesForBooking,
@@ -66,6 +67,9 @@ export function verifyPassToken(token: string): PassVerification {
 
   const trimmed = token.trim();
   if (!trimmed) return { valid: false, found: false, campusName };
+  if (trimmed.includes(".") && !verifyPassTokenSignature(trimmed)) {
+    return { valid: false, found: false, campusName };
+  }
 
   const booking = findVisitByToken(trimmed);
   if (!booking) return { valid: false, found: false, campusName };

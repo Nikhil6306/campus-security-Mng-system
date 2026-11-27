@@ -55,10 +55,10 @@ class RootErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState
 
 export default function RootLayout() {
   useEffect(() => {
-    // Guarantees splash screen is dismissed within 600ms on cold start
+    // Guarantees splash screen is dismissed promptly on cold start
     const timer = setTimeout(() => {
       SplashScreen.hideAsync().catch(() => {});
-    }, 600);
+    }, 200);
 
     return () => clearTimeout(timer);
   }, []);

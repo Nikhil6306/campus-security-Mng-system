@@ -184,89 +184,15 @@ export function validateIdNumber(value: string): string | undefined {
 }
 
 /* ------------------------------------------------------------------ *
- * Aadhaar
+ * Official ID masking
  * ------------------------------------------------------------------ */
 
-/**
- * Verhoeff checksum tables — the scheme UIDAI uses for the 12th digit.
- *
- * Checking the digit here rejects a transposed or mistyped number at the point
- * of entry. It says nothing about whether the number belongs to a real person:
- * this project is not connected to an authorised verification service, so the
- * only claim made anywhere is "well-formed", never "verified".
- */
-const VERHOEFF_D = [
-  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
-  [1, 2, 3, 4, 0, 6, 7, 8, 9, 5],
-  [2, 3, 4, 0, 1, 7, 8, 9, 5, 6],
-  [3, 4, 0, 1, 2, 8, 9, 5, 6, 7],
-  [4, 0, 1, 2, 3, 9, 5, 6, 7, 8],
-  [5, 9, 8, 7, 6, 0, 4, 3, 2, 1],
-  [6, 5, 9, 8, 7, 1, 0, 4, 3, 2],
-  [7, 6, 5, 9, 8, 2, 1, 0, 4, 3],
-  [8, 7, 6, 5, 9, 3, 2, 1, 0, 4],
-  [9, 8, 7, 6, 5, 4, 3, 2, 1, 0],
-];
-
-const VERHOEFF_P = [
-  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
-  [1, 5, 7, 6, 2, 8, 3, 0, 9, 4],
-  [5, 8, 0, 3, 7, 9, 6, 1, 4, 2],
-  [8, 9, 1, 6, 0, 4, 3, 5, 2, 7],
-  [9, 4, 5, 3, 1, 2, 6, 8, 7, 0],
-  [4, 2, 8, 6, 5, 7, 3, 9, 0, 1],
-  [2, 7, 9, 3, 8, 0, 6, 4, 1, 5],
-  [7, 0, 4, 6, 9, 1, 3, 2, 5, 8],
-];
-
-function verhoeffValid(digits: string): boolean {
-  let c = 0;
-  const reversed = digits.split("").reverse();
-  for (let i = 0; i < reversed.length; i += 1) {
-    c = VERHOEFF_D[c][VERHOEFF_P[i % 8][Number(reversed[i])]];
-  }
-  return c === 0;
-}
-
-/** Digits only — the form accepts the grouped `1234 5678 9012` spelling. */
-export function normaliseAadhaar(value: string): string {
-  return value.replace(/[^\d]/g, "");
-}
-
-/**
- * Validates the *format* of an Aadhaar number: twelve digits, not starting
- * with 0 or 1, passing the Verhoeff check digit.
- */
-export function validateAadhaar(value: string): string | undefined {
-  const digits = normaliseAadhaar(value);
-
-  // Shape problems name the shape, so the visitor knows what to count.
-  if (digits.length !== 12) return "Please enter a valid 12-digit Aadhaar number.";
-
-  // A number that is the right shape but cannot be an Aadhaar. The message is
-  // deliberately identical for the leading-digit rule and the check digit:
-  // spelling out which rule failed would help someone fabricate a number.
-  if (/^[01]/.test(digits)) return "Please enter a valid Aadhaar number.";
-  if (!verhoeffValid(digits)) return "Please enter a valid Aadhaar number.";
-  return undefined;
-}
-
-/**
- * Groups digits as `XXXX XXXX XXXX` while the visitor types.
- *
- * Accepts a pasted number in either spelling — grouped or bare — because it
- * works from the digits alone. Only the first twelve digits survive, so a
- * stray keystroke cannot silently extend the number.
- */
-export function formatAadhaar(value: string): string {
-  const digits = normaliseAadhaar(value).slice(0, 12);
-  return digits.replace(/(.{4})(?=.)/g, "$1 ").trim();
-}
-
-/** `XXXXXXXX1234` — the only form any interface is allowed to render. */
-export function maskAadhaar(last4: string): string {
-  const tail = (last4 ?? "").replace(/[^\d]/g, "").slice(-4);
-  return tail ? `XXXXXXXX${tail}` : "XXXXXXXXXXXX";
+/** Masks an official ID reference to at most the last 4 characters for display. */
+export function maskIdNumber(value: string): string {
+  const clean = (value ?? "").trim();
+  if (!clean) return "—";
+  if (clean.length <= 4) return clean;
+  return `${"X".repeat(Math.min(8, clean.length - 4))}${clean.slice(-4)}`;
 }
 
 export function validateCount(value: number, min = 1, max = 20): string | undefined {

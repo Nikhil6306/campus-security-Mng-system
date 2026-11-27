@@ -14,7 +14,7 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "node tests/unit.mjs && node tests/offline-persistence.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types tests/email-service.mjs && node tests/supabase-migration-safety.mjs && node tests/gate-in-out-workflow.mjs && node tests/guard-authentication-and-approval.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types tests/deployment-config.mjs",
+    "test": "node tests/unit.mjs && node tests/offline-persistence.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types tests/email-service.mjs && node tests/supabase-migration-safety.mjs && node tests/gate-in-out-workflow.mjs && node tests/guard-authentication-and-approval.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types tests/deployment-config.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types tests/reviewer-security-and-integration.mjs",
     "test:offline": "node tests/offline-persistence.mjs",
     "test:e2e": "node tests/e2e-journey.mjs",
     "test:security": "node tests/security-audit.mjs",

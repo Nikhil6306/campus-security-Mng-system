@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/server/auth";
+import { requireGateOperator } from "@/lib/server/auth";
 import { scanStudentPass, type GateScanInput } from "@/lib/server/services/outpass";
 import { toApiError } from "@/lib/server/errors";
 import { z } from "zod";
@@ -24,7 +24,7 @@ const scanSchema = z.object({
  */
 export async function POST(req: NextRequest) {
   try {
-    const actor = await requireAuth(req);
+    const actor = await requireGateOperator();
     const body = await req.json();
     const input = scanSchema.parse(body) as GateScanInput;
 

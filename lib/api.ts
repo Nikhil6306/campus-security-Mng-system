@@ -203,7 +203,6 @@ export interface PublicBookingView {
   status: string;
   statusCode: string;
   fullName: string;
-  aadhaarNumber?: string;
   idNumber?: string;
   mobileNumber?: string;
   mobile?: string;
@@ -533,7 +532,7 @@ export const api = {
     put<{ delivery: PassDeliveryReport }>("/api/public/pass-delivery", { bookingId, mobile }),
 
   /* Bookings */
-  /** Accompanying visitors on one booking; Aadhaar arrives masked. */
+  /** Accompanying visitors on one booking. */
   guestsForBooking: (id: string) => request<VisitGuest[]>(`/api/bookings/${id}/guests`),
   createBooking: (payload: Record<string, unknown>) =>
     post<VisitRequest>("/api/bookings", payload),

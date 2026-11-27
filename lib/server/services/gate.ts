@@ -19,6 +19,7 @@ import { mapVisit } from "../repo";
 import { notificationService } from "../notification-service";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { isNetworkError, persistSecondaryToSupabase, persistToSupabase } from "../supabase-db";
+import { verifyPassTokenSignature } from "./pass-token";
 
 /**
  * Gate operations.
@@ -86,6 +87,11 @@ function resolveBooking(input: {
       }
     } catch {
       // ignore URL parsing error and use raw string
+    }
+
+    // Signed QR tokens must pass HMAC-SHA256 verification before DB lookup.
+    if (rawToken.includes(".") && !verifyPassTokenSignature(rawToken)) {
+      return undefined;
     }
 
     const byToken = findVisitByToken(rawToken);
@@ -214,8 +220,21 @@ export function verifyPass(input: {
     }
   }
 
+  // A booking with status 'Approved' whose only issues are advisory (timing: too_early or outside_hours)
+  // is authentic and approved — we preserve the advisory issues for guard awareness, but authorize check-in.
+  const hasFatalIssues = issues.some(
+    (i) => i.code !== "too_early" && i.code !== "outside_hours",
+  );
+  const isAdmissible = booking.status === "Approved" && !hasFatalIssues;
+
   return issues.length
-    ? { ok: false, booking, issues, history: historyRows }
+    ? {
+        ok: isAdmissible,
+        booking,
+        issues,
+        nextAction: isAdmissible ? "check-in" : undefined,
+        history: historyRows,
+      }
     : { ok: true, booking, issues: [], nextAction: "check-in", history: historyRows };
 }
 
@@ -246,7 +265,12 @@ export async function checkIn(
     throw conflict("This visitor is already inside the campus.");
   }
   if (!verification.ok) {
-    throw conflict(verification.issues[0]?.message ?? "This pass cannot be accepted at the gate.");
+    const hasFatalIssues = verification.issues.some(
+      (i) => i.code !== "too_early" && i.code !== "outside_hours",
+    );
+    if (hasFatalIssues || verification.booking.status !== "Approved") {
+      throw conflict(verification.issues[0]?.message ?? "This pass cannot be accepted at the gate.");
+    }
   }
 
   const guard = actingGuard(actor);

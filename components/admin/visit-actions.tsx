@@ -54,7 +54,7 @@ import type { WhatsAppMessageRecord } from "@/lib/api";
 import { getCheckLogs, getGates } from "@/lib/selectors";
 import { STATUS_CODES, type VisitGuest, type VisitRequest } from "@/lib/types";
 import { durationBetween, formatDate, formatDateTime, formatTime } from "@/lib/utils";
-import { maskAadhaar, validateFutureDate, validateText, validateTime } from "@/lib/validation";
+import { maskIdNumber, validateFutureDate, validateText, validateTime } from "@/lib/validation";
 
 /* ------------------------------------------------------------------ *
  * Shared mutation helpers.
@@ -556,8 +556,8 @@ export function VisitDetailDialog({
               <dl className="grid flex-1 gap-4 sm:grid-cols-2">
                 <DetailRow label="Mobile Number" value={record.mobileNumber || record.mobile} mono />
                 <DetailRow
-                  label="Aadhaar Card Number"
-                  value={maskAadhaar(record.aadhaarNumber || record.idNumber || "")}
+                  label={record.idType || "Official ID"}
+                  value={maskIdNumber(record.idNumber || "")}
                   mono
                 />
                 <DetailRow
@@ -599,14 +599,6 @@ export function VisitDetailDialog({
                       <dl className="mt-2 grid gap-4 sm:grid-cols-3">
                         <DetailRow label="Mobile" value={guest.mobile} mono />
                         <DetailRow label="Relation" value={guest.relation} />
-                        {/* Aadhaar is masked here and everywhere else. The full
-                            number is never sent to the browser; recovering one
-                            is a deliberate, server-side operator action. */}
-                        <DetailRow
-                          label="Aadhaar"
-                          value={maskAadhaar(guest.aadhaarLast4)}
-                          mono
-                        />
                         {isAdmin ? (
                           <DetailRow
                             label="Address"

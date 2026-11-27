@@ -86,15 +86,6 @@ export const zPhotoId = z
  * Bookings
  * ------------------------------------------------------------------ */
 
-export const zAadhaar = z
-  .string({ error: "Please enter a valid 12-digit Aadhaar number." })
-  .transform((v) => v.replace(/[^\d]/g, ""))
-  .superRefine((v, ctx) => {
-    if (!v || v.length < 4 || v.length > 20) {
-      ctx.addIssue({ code: "custom", message: "Please enter a valid 12-digit Aadhaar number." });
-    }
-  });
-
 function preprocessBookingInput(val: unknown) {
   if (!val || typeof val !== "object") return val;
   const raw = { ...(val as Record<string, unknown>) };
@@ -104,13 +95,6 @@ function preprocessBookingInput(val: unknown) {
   }
   if (!raw.mobile && raw.mobileNumber) {
     raw.mobile = raw.mobileNumber;
-  }
-
-  if (!raw.aadhaarNumber && raw.idNumber) {
-    raw.aadhaarNumber = raw.idNumber;
-  }
-  if (!raw.idNumber && raw.aadhaarNumber) {
-    raw.idNumber = raw.aadhaarNumber;
   }
 
   if (raw.hasCar === undefined) {
@@ -149,7 +133,6 @@ function preprocessBookingInput(val: unknown) {
 
 export const bookingObject = z.object({
   fullName: zName,
-  aadhaarNumber: z.string().trim().optional().default(""),
   mobileNumber: zMobile,
   photoId: zPhotoId,
   hasCar: z.boolean().default(false),
@@ -166,7 +149,7 @@ export const bookingObject = z.object({
   whatsappCountryCode: z.string().optional().default("+91"),
   whatsappNumber: z.string().optional().default(""),
   visitorType: z.string().optional().default("Guest"),
-  idType: z.string().optional().default("Aadhaar Card"),
+  idType: z.string().optional().default("Driving Licence"),
   purpose: z.string().optional().default("Campus Visit"),
   purposeDetail: z.string().optional().default(""),
   hostId: z.string().nullable().optional(),
@@ -200,20 +183,12 @@ export const bookingSchema = z.preprocess(
 
 export type BookingInput = z.infer<typeof bookingObject>;
 
-export const guestInputSchema = z
-  .object({
-    fullName: z.string().trim().min(2, "Full name is required."),
-    mobile: z.string().trim().optional(),
-    aadhaarNumber: z.string().trim().optional(),
-    aadhaar: z.string().trim().optional(),
-    relation: z.string().trim().optional().default("Other"),
-    address: z.string().trim().optional().default(""),
-  })
-  .transform((g) => ({
-    ...g,
-    aadhaarNumber: g.aadhaarNumber || g.aadhaar || "",
-    aadhaar: g.aadhaar || g.aadhaarNumber || "",
-  }));
+export const guestInputSchema = z.object({
+  fullName: z.string().trim().min(2, "Full name is required."),
+  mobile: z.string().trim().optional(),
+  relation: z.string().trim().optional().default("Other"),
+  address: z.string().trim().optional().default(""),
+});
 
 export type GuestInput = z.infer<typeof guestInputSchema>;
 

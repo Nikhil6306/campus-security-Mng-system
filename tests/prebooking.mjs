@@ -102,7 +102,7 @@ function bookingPayload(overrides = {}) {
     email: "visitor@example.com",
     gender: "Female",
     visitorType: "Prospective Student",
-    idType: "Aadhaar Card",
+    idType: "Driving Licence",
     idNumber: "123456789012",
     purpose: "Campus Visit",
     purposeDetail: "Visiting the campus before applying for admission.",
@@ -150,99 +150,15 @@ function assertRefused(status, envelope) {
  * 1 — Aadhaar handling, exercised directly
  * ------------------------------------------------------------------ */
 
-async function aadhaarSuite() {
-  section("Aadhaar format validation");
+async function idMaskingSuite() {
+  section("Official ID masking");
 
-  const { validateAadhaar, normaliseAadhaar, maskAadhaar } = await import(
-    "../lib/validation.ts"
-  );
+  const { maskIdNumber } = await import("../lib/validation.ts");
 
-  await test("a well-formed number is accepted", () => {
-    assert.equal(validateAadhaar(AADHAAR.a), undefined);
-    assert.equal(validateAadhaar("2345 6789 0124"), undefined);
-  });
-
-  await test("a wrong check digit is rejected", () => {
-    assert.ok(validateAadhaar("234567890123"));
-  });
-
-  await test("a transposition is rejected", () => {
-    assert.ok(validateAadhaar("324567890124"));
-  });
-
-  await test("fewer than twelve digits is rejected", () => {
-    assert.ok(validateAadhaar("23456789012"));
-  });
-
-  await test("a number starting 0 or 1 is rejected", () => {
-    assert.ok(validateAadhaar("012345678901"));
-    assert.ok(validateAadhaar("112345678901"));
-  });
-
-  await test("an empty value is rejected", () => {
-    assert.ok(validateAadhaar(""));
-  });
-
-  await test("grouping characters are stripped", () => {
-    assert.equal(normaliseAadhaar("2345 6789-0124"), "234567890124");
-  });
-
-  await test("masking shows only the last four digits", () => {
-    assert.equal(maskAadhaar("0124"), "XXXXXXXX0124");
-    assert.ok(!maskAadhaar("0124").includes("2345"));
-  });
-
-  section("Aadhaar at rest");
-
-  process.env.AADHAAR_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
-  const sealed = await import("../lib/server/aadhaar.ts");
-
-  await test("encryption round-trips under a configured key", () => {
-    const record = sealed.sealAadhaar(AADHAAR.a);
-    assert.ok(record.ciphertext, "expected ciphertext");
-    assert.equal(record.last4, "0124");
-    assert.equal(sealed.openAadhaar(record.ciphertext), AADHAAR.a);
-  });
-
-  await test("the stored envelope contains no plaintext", () => {
-    const record = sealed.sealAadhaar(AADHAAR.b);
-    assert.ok(!record.ciphertext.includes(AADHAAR.b));
-    assert.ok(!record.ciphertext.includes(AADHAAR.b.slice(0, 8)));
-  });
-
-  await test("two seals of the same number differ (random IV)", () => {
-    const first = sealed.sealAadhaar(AADHAAR.c).ciphertext;
-    const second = sealed.sealAadhaar(AADHAAR.c).ciphertext;
-    assert.notEqual(first, second);
-  });
-
-  await test("the duplicate digest is stable for the same number", () => {
-    assert.equal(
-      sealed.sealAadhaar(AADHAAR.c).hash,
-      sealed.sealAadhaar(AADHAAR.c).hash,
-    );
-    assert.notEqual(sealed.sealAadhaar(AADHAAR.c).hash, sealed.sealAadhaar(AADHAAR.d).hash);
-  });
-
-  await test("a tampered envelope does not decrypt", () => {
-    const record = sealed.sealAadhaar(AADHAAR.a);
-    const parts = record.ciphertext.split(".");
-    parts[3] = parts[3].slice(0, -2) + (parts[3].endsWith("A") ? "BB" : "AA");
-    assert.equal(sealed.openAadhaar(parts.join(".")), null);
-  });
-
-  await test("a wrong key does not decrypt", () => {
-    const record = sealed.sealAadhaar(AADHAAR.a);
-    process.env.AADHAAR_ENCRYPTION_KEY = Buffer.alloc(32, 9).toString("base64");
-    assert.equal(sealed.openAadhaar(record.ciphertext), null);
-  });
-
-  await test("without a key only the last four digits are retained", () => {
-    delete process.env.AADHAAR_ENCRYPTION_KEY;
-    const record = sealed.sealAadhaar(AADHAAR.a);
-    assert.equal(record.ciphertext, null);
-    assert.equal(record.hash, null);
-    assert.equal(record.last4, "0124");
+  await test("masking shows at most the last four characters", () => {
+    assert.equal(maskIdNumber("DL0820260124"), "XXXXXXXX0124");
+    assert.ok(!maskIdNumber("DL0820260124").includes("2026"));
+    assert.equal(maskIdNumber(""), "—");
   });
 }
 
@@ -680,18 +596,14 @@ async function passSuite() {
 
   section("Storage");
 
-  await test("the database holds no plaintext Aadhaar", () => {
+  await test("the database holds no Aadhaar data", () => {
     const db = new DatabaseSync(DB_PATH);
     const rows = db.prepare("SELECT * FROM visit_guests").all();
     db.close();
     assert.ok(rows.length > 0, "expected guest rows from this run");
     for (const row of rows) {
-      assert.equal(String(row.aadhaar_last4).length, 4);
-      for (const value of Object.values(AADHAAR)) {
-        assert.ok(!String(row.aadhaar_ciphertext ?? "").includes(value));
-        assert.ok(!String(row.address).includes(value));
-        assert.ok(!String(row.full_name).includes(value));
-      }
+      assert.ok(!row.aadhaar_ciphertext, "aadhaar_ciphertext must be empty/null");
+      assert.ok(!row.aadhaar_last4, "aadhaar_last4 must be empty");
     }
   });
 }
@@ -718,7 +630,7 @@ function cleanup() {
 /* ------------------------------------------------------------------ */
 
 async function main() {
-  await aadhaarSuite();
+  await idMaskingSuite();
 
   const reachable = await fetch(`${BASE}/api/public/directory`)
     .then((r) => r.ok)

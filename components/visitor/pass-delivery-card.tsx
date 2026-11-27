@@ -23,7 +23,7 @@ import { cn } from "@/lib/utils";
  *
  * WHAT THE QR CARRIES: the absolute URL of the verification page plus the
  * booking's pass token, and nothing else. No name, no contact number, no
- * address, no ID number and no Aadhaar fragment is encoded — a scan resolves
+ * address, and no ID number is encoded — a scan resolves
  * to a server-rendered page that decides for itself what a gate officer may
  * see.
  */
