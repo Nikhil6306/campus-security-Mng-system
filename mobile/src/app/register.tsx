@@ -1,16 +1,11 @@
 import { useState } from 'react';
 import { router } from 'expo-router';
 import {
-  BadgeCheck,
-  CheckCircle2,
-  ChevronDown,
   Clock,
   Eye,
   EyeOff,
-  IdCard,
   Lock,
   Mail,
-  MapPin,
   Phone,
   Shield,
   User,
@@ -35,64 +30,53 @@ import {
 } from '@/components/security-ui';
 import { registerGuard } from '@/services/api';
 
-const DESIGNATIONS = [
-  'Security Guard',
-  'Head Guard',
-  'Gate Supervisor',
-  'Patrol Officer',
-  'Security Desk Officer',
-];
-
-const GATES = [
-  'Main Gate',
-  'Gate 1 (North)',
-  'Gate 2 (South)',
-  'Hostel Gate',
-  'Admin Gate',
-];
-
 export default function RegisterScreen() {
+  // ONLY 4 registration fields per master prompt specifications:
+  // 1. Full Name
+  // 2. Mobile Number
+  // 3. Email Address
+  // 4. Password
   const [fullName, setFullName] = useState('');
-  const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-  const [guardId, setGuardId] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [designation, setDesignation] = useState('Security Guard');
-  const [assignedGate, setAssignedGate] = useState('Main Gate');
 
   const [pwdVisible, setPwdVisible] = useState(false);
-  const [confirmPwdVisible, setConfirmPwdVisible] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
+  const [submittedData, setSubmittedData] = useState<{
+    requestId: string;
+    fullName: string;
+    email: string;
+    message: string;
+  } | null>(null);
 
   const submit = async () => {
     setError('');
 
-    if (!fullName.trim()) {
-      setError('Please enter your full name.');
+    // 1. Full Name validation
+    if (!fullName.trim() || fullName.trim().length < 3) {
+      setError('Please enter your full name (at least 3 characters).');
       return;
     }
+
+    // 2. Mobile Number validation (Indian 10-digit number)
+    const rawDigits = phone.replace(/[^0-9]/g, '');
+    const cleanDigits = rawDigits.length === 12 && rawDigits.startsWith('91') ? rawDigits.slice(2) : rawDigits;
+    if (!cleanDigits || !/^[6-9]\d{9}$/.test(cleanDigits)) {
+      setError('Please enter a valid 10-digit Indian mobile number (+91 optional).');
+      return;
+    }
+
+    // 3. Email validation
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       setError('Enter a valid email address.');
       return;
     }
-    const cleanPhone = phone.replace(/[^0-9]/g, '');
-    if (cleanPhone.length < 10) {
-      setError('Enter a valid 10-digit mobile number.');
-      return;
-    }
-    if (!guardId.trim()) {
-      setError('Enter your Guard ID or Employee ID.');
-      return;
-    }
+
+    // 4. Password validation (secure password policy)
     if (password.length < 6) {
-      setError('Password must be at least 6 characters.');
-      return;
-    }
-    if (password !== confirmPassword) {
-      setError('Passwords do not match.');
+      setError('Password must be at least 6 characters long.');
       return;
     }
 
@@ -101,17 +85,21 @@ export default function RegisterScreen() {
       const res = await registerGuard({
         fullName: fullName.trim(),
         email: email.trim().toLowerCase(),
-        phone: cleanPhone,
-        guardId: guardId.trim().toUpperCase(),
+        phone: cleanDigits,
         password,
-        designation,
-        assignedGate,
       });
 
       if (res.success) {
-        setSubmitted(true);
+        setSubmittedData({
+          requestId: res.data?.requestId || res.data?.id || 'REQ-GRD',
+          fullName: fullName.trim(),
+          email: email.trim().toLowerCase(),
+          message:
+            res.message ||
+            'Your guard registration request has been submitted successfully. Your account is currently awaiting Admin approval. You will be able to access the Guard Dashboard after your request is approved.',
+        });
       } else {
-        setError(res.message || 'Registration failed. Please check inputs.');
+        setError(res.message || 'Registration failed. Please check inputs and try again.');
       }
     } catch (err) {
       setError(
@@ -124,55 +112,47 @@ export default function RegisterScreen() {
     }
   };
 
-  if (submitted) {
+  // ------------------------------------------------------------------------
+  // POST-SUBMISSION: PENDING ADMIN APPROVAL STATE
+  // ------------------------------------------------------------------------
+  if (submittedData) {
     return (
       <Page title="Registration Submitted" subtitle="Dev Sanskriti Vishwavidyalaya">
         <View style={styles.submittedContainer}>
           <Card style={styles.successCard}>
             <View style={styles.successIconWrapper}>
-              <Clock size={48} color={colors.amber} />
+              <Clock size={44} color={colors.amber} />
             </View>
 
             <AppText style={styles.successTitle}>
               Registration Request Submitted
             </AppText>
 
-            <AppText style={styles.successBody}>
-              Your account has been recorded successfully and is waiting for
-              <AppText style={styles.bold}> Administrator Approval</AppText>.
-            </AppText>
+            <View style={styles.badgePending}>
+              <AppText style={styles.badgePendingText}>PENDING – Awaiting Admin Approval</AppText>
+            </View>
 
             <View style={styles.detailsBox}>
               <View style={styles.detailRow}>
-                <AppText style={styles.detailLabel}>Officer Name:</AppText>
-                <AppText style={styles.detailValue}>{fullName}</AppText>
+                <AppText style={styles.detailLabel}>Reference ID:</AppText>
+                <AppText style={styles.detailValuePrimary}>{submittedData.requestId}</AppText>
               </View>
               <View style={styles.detailRow}>
-                <AppText style={styles.detailLabel}>Guard ID:</AppText>
-                <AppText style={styles.detailValue}>{guardId.toUpperCase()}</AppText>
+                <AppText style={styles.detailLabel}>Applicant Name:</AppText>
+                <AppText style={styles.detailValue}>{submittedData.fullName}</AppText>
               </View>
               <View style={styles.detailRow}>
                 <AppText style={styles.detailLabel}>Registered Email:</AppText>
-                <AppText style={styles.detailValue}>{email.toLowerCase()}</AppText>
-              </View>
-              <View style={styles.detailRow}>
-                <AppText style={styles.detailLabel}>Assigned Gate:</AppText>
-                <AppText style={styles.detailValue}>{assignedGate}</AppText>
-              </View>
-              <View style={styles.detailRow}>
-                <AppText style={styles.detailLabel}>Status:</AppText>
-                <View style={styles.badgePending}>
-                  <AppText style={styles.badgePendingText}>PENDING APPROVAL</AppText>
-                </View>
+                <AppText style={styles.detailValue}>{submittedData.email}</AppText>
               </View>
             </View>
 
+            {/* Exact required status message */}
             <Notice tone="amber">
-              You will receive an activation email once an administrator approves your
-              application. You may then sign in using your registered email and password.
+              {submittedData.message}
             </Notice>
 
-            <View style={{ marginTop: 20 }}>
+            <View style={{ marginTop: 22 }}>
               <Button
                 label="Return to Sign In"
                 onPress={() => router.replace('/login')}
@@ -184,8 +164,11 @@ export default function RegisterScreen() {
     );
   }
 
+  // ------------------------------------------------------------------------
+  // NEW GUARD REGISTRATION FORM: EXACTLY 4 FIELDS
+  // ------------------------------------------------------------------------
   return (
-    <Page title="Guard Sign Up" subtitle="Campus Security Registration">
+    <Page title="Guard Registration" subtitle="Dev Sanskriti Vishwavidyalaya">
       <ScrollView contentContainerStyle={styles.scroll}>
         <View style={styles.mark}>
           <Image
@@ -194,102 +177,69 @@ export default function RegisterScreen() {
             resizeMode="contain"
             alt="Security Guard Seal"
           />
-          <AppText style={styles.brand}>Duty Officer Registration</AppText>
+          <AppText style={styles.brand}>Register New Guard</AppText>
           <AppText style={styles.muted}>
-            Dev Sanskriti Vishwavidyalaya · Security Personnel Onboarding
+            Campus Security Management System · Haridwar
           </AppText>
         </View>
 
         <Card style={styles.form}>
+          <Notice>
+            Authorized Security Personnel Onboarding: Submit your details for administrative review and gate assignment.
+          </Notice>
+
+          {error ? (
+            <Notice tone="red">
+              {error}
+            </Notice>
+          ) : null}
+
+          {/* 1. Full Name */}
           <Field
-            label="Full Name *"
+            label="1. Full Name *"
             value={fullName}
-            onChangeText={setFullName}
-            placeholder="e.g. Ramesh Kumar"
+            onChangeText={(text) => {
+              setFullName(text);
+              if (error) setError('');
+            }}
+            placeholder="e.g. Ramesh Chandra Sharma"
+            autoCapitalize="words"
           />
 
+          {/* 2. Mobile Number (Indian format) */}
           <Field
-            label="Official / Work Email *"
+            label="2. Mobile Number (10 digits) *"
+            value={phone}
+            onChangeText={(text) => {
+              setPhone(text);
+              if (error) setError('');
+            }}
+            placeholder="9876543210 (+91 optional)"
+            keyboardType="phone-pad"
+            maxLength={13}
+          />
+
+          {/* 3. Email Address */}
+          <Field
+            label="3. Email Address *"
             value={email}
-            onChangeText={setEmail}
-            placeholder="guard@campus.edu or name@dsvv.ac.in"
+            onChangeText={(text) => {
+              setEmail(text);
+              if (error) setError('');
+            }}
+            placeholder="guard.ramesh@dsvv.ac.in"
             keyboardType="email-address"
             autoCapitalize="none"
           />
 
+          {/* 4. Password */}
           <Field
-            label="Mobile Number (10 digits) *"
-            value={phone}
-            onChangeText={setPhone}
-            placeholder="9876543210"
-            keyboardType="phone-pad"
-            maxLength={10}
-          />
-
-          <Field
-            label="Guard ID / Employee ID *"
-            value={guardId}
-            onChangeText={setGuardId}
-            placeholder="e.g. GRD-101 or EMP-5421"
-            autoCapitalize="characters"
-          />
-
-          {/* Designation Selection */}
-          <View style={styles.selectGroup}>
-            <AppText style={styles.selectLabel}>Designation / Role</AppText>
-            <View style={styles.chipRow}>
-              {DESIGNATIONS.map((d) => (
-                <Pressable
-                  key={d}
-                  style={[
-                    styles.chip,
-                    designation === d && styles.chipActive,
-                  ]}
-                  onPress={() => setDesignation(d)}
-                >
-                  <AppText
-                    style={[
-                      styles.chipText,
-                      designation === d && styles.chipTextActive,
-                    ]}
-                  >
-                    {d}
-                  </AppText>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-
-          {/* Assigned Gate Selection */}
-          <View style={styles.selectGroup}>
-            <AppText style={styles.selectLabel}>Assigned Gate / Post</AppText>
-            <View style={styles.chipRow}>
-              {GATES.map((g) => (
-                <Pressable
-                  key={g}
-                  style={[
-                    styles.chip,
-                    assignedGate === g && styles.chipActive,
-                  ]}
-                  onPress={() => setAssignedGate(g)}
-                >
-                  <AppText
-                    style={[
-                      styles.chipText,
-                      assignedGate === g && styles.chipTextActive,
-                    ]}
-                  >
-                    {g}
-                  </AppText>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-
-          <Field
-            label="Password (min 6 characters) *"
+            label="4. Password (min 6 characters) *"
             value={password}
-            onChangeText={setPassword}
+            onChangeText={(text) => {
+              setPassword(text);
+              if (error) setError('');
+            }}
             placeholder="Enter secure password"
             secureTextEntry={!pwdVisible}
             right={
@@ -299,51 +249,31 @@ export default function RegisterScreen() {
                 hitSlop={10}
               >
                 {pwdVisible ? (
-                  <EyeOff size={19} color={colors.muted} />
+                  <EyeOff size={18} color={colors.muted} />
                 ) : (
-                  <Eye size={19} color={colors.muted} />
+                  <Eye size={18} color={colors.muted} />
                 )}
               </Pressable>
             }
           />
 
-          <Field
-            label="Confirm Password *"
-            value={confirmPassword}
-            onChangeText={setConfirmPassword}
-            placeholder="Re-enter your password"
-            secureTextEntry={!confirmPwdVisible}
-            right={
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => setConfirmPwdVisible(!confirmPwdVisible)}
-                hitSlop={10}
-              >
-                {confirmPwdVisible ? (
-                  <EyeOff size={19} color={colors.muted} />
-                ) : (
-                  <Eye size={19} color={colors.muted} />
-                )}
-              </Pressable>
-            }
-          />
-
-          {error ? (
-            <Notice tone="red">{error}</Notice>
-          ) : null}
-
-          <Button
-            label={loading ? 'Submitting Registration...' : 'Submit for Admin Approval'}
-            icon={UserCheck}
-            onPress={() => void submit()}
-          />
-
-          <View style={styles.signinPrompt}>
-            <AppText style={styles.promptText}>Already registered as guard?</AppText>
-            <Pressable onPress={() => router.replace('/login')}>
-              <AppText style={styles.signinLink}>Sign In Here</AppText>
-            </Pressable>
+          <View style={{ marginTop: 12 }}>
+            <Button
+              label={loading ? 'Submitting Registration...' : 'Submit Guard Registration'}
+              onPress={() => void submit()}
+              disabled={loading}
+            />
           </View>
+
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.replace('/login')}
+            style={styles.backButton}
+          >
+            <AppText style={styles.backButtonText}>
+              Already registered? Sign In as Guard
+            </AppText>
+          </Pressable>
         </Card>
       </ScrollView>
     </Page>
@@ -351,69 +281,90 @@ export default function RegisterScreen() {
 }
 
 const styles = StyleSheet.create({
-  scroll: { paddingBottom: 40 },
-  mark: { alignItems: 'center', gap: 6, paddingVertical: 12 },
-  logo: { width: 68, height: 68, marginBottom: 4 },
-  brand: { fontSize: 21, fontWeight: '800', color: colors.ink },
-  muted: { color: colors.muted, fontSize: 13, textAlign: 'center' },
-  form: { gap: 14, marginTop: 4 },
-  selectGroup: { gap: 6 },
-  selectLabel: { fontSize: 13, fontWeight: '700', color: colors.ink },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  chip: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.slateSoft,
+  scroll: {
+    padding: 16,
+    paddingBottom: 40,
   },
-  chipActive: {
-    backgroundColor: '#0A192F',
-    borderColor: '#0A192F',
-  },
-  chipText: { fontSize: 12, color: colors.ink, fontWeight: '600' },
-  chipTextActive: { color: colors.white, fontWeight: '700' },
-  signinPrompt: {
-    flexDirection: 'row',
-    justifyContent: 'center',
+  mark: {
     alignItems: 'center',
-    gap: 6,
-    paddingVertical: 10,
+    marginBottom: 18,
+    gap: 4,
   },
-  promptText: { fontSize: 13, color: colors.muted },
-  signinLink: { fontSize: 13, fontWeight: '800', color: colors.blue },
-  submittedContainer: { paddingTop: 20 },
-  successCard: { padding: 20, gap: 14 },
-  successIconWrapper: {
-    alignSelf: 'center',
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#FEF3C7',
-    alignItems: 'center',
-    justifyContent: 'center',
+  logo: {
+    width: 60,
+    height: 60,
     marginBottom: 8,
   },
-  successTitle: {
+  brand: {
+    color: colors.ink,
     fontSize: 20,
     fontWeight: '800',
-    color: colors.ink,
-    textAlign: 'center',
+    letterSpacing: -0.3,
   },
-  successBody: {
-    fontSize: 14,
+  muted: {
     color: colors.muted,
+    fontSize: 12,
     textAlign: 'center',
-    lineHeight: 20,
   },
-  bold: { fontWeight: '700', color: colors.ink },
+  form: {
+    gap: 14,
+  },
+  backButton: {
+    alignItems: 'center',
+    paddingVertical: 10,
+    marginTop: 4,
+  },
+  backButtonText: {
+    color: colors.blue,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  submittedContainer: {
+    padding: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  successCard: {
+    width: '100%',
+    padding: 22,
+    alignItems: 'center',
+    gap: 14,
+  },
+  successIconWrapper: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: colors.amberSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  successTitle: {
+    color: colors.ink,
+    fontSize: 18,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  badgePending: {
+    backgroundColor: colors.amberSoft,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  badgePendingText: {
+    color: colors.amber,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
   detailsBox: {
-    backgroundColor: colors.slateSoft,
-    borderRadius: 10,
+    width: '100%',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
     padding: 14,
-    gap: 8,
-    marginVertical: 10,
+    gap: 9,
     borderWidth: 1,
     borderColor: colors.border,
   },
@@ -422,17 +373,20 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  detailLabel: { fontSize: 12, color: colors.muted, fontWeight: '600' },
-  detailValue: { fontSize: 13, color: colors.ink, fontWeight: '700' },
-  badgePending: {
-    backgroundColor: '#FEF3C7',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
+  detailLabel: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '500',
   },
-  badgePendingText: {
-    fontSize: 10,
+  detailValue: {
+    color: colors.ink,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  detailValuePrimary: {
+    color: colors.blue,
+    fontSize: 14,
     fontWeight: '800',
-    color: '#92400E',
+    fontFamily: 'monospace',
   },
 });

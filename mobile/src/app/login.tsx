@@ -81,8 +81,7 @@ export default function LoginScreen() {
             </AppText>
           </View>
           <AppText style={styles.statusNoticeBodyPending}>
-            Your registration request is waiting for administrator review. You will receive an
-            email confirmation once approved.
+            Your guard registration request has been submitted successfully. Your account is currently awaiting Admin approval. You will be able to access the Guard Dashboard after your request is approved.
           </AppText>
           <AppText style={styles.statusNoticeContact}>
             For urgent gate duties, contact Security Control: <AppText style={styles.bold}>security@dsvv.ac.in</AppText>
@@ -182,7 +181,7 @@ export default function LoginScreen() {
           <AppText style={styles.signupPrompt}>New campus security guard?</AppText>
           <Pressable
             accessibilityRole="button"
-            onPress={() => router.push('/register')}
+            onPress={() => router.push('/register' as any)}
             style={styles.signupButton}
           >
             <UserPlus size={16} color={colors.blue} />

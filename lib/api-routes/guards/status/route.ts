@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { bootstrap } from "@/lib/server/http";
+import { bootstrap, ADMIN_ROLES } from "@/lib/server/http";
+import { currentSession } from "@/lib/server/auth";
 import { getGuardRegistrationByEmail } from "@/lib/server/services/guards";
 import { get } from "@/lib/server/db";
 
@@ -9,6 +10,16 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   try {
     bootstrap();
+
+    // Require authentication — this endpoint returns PII (name, gate assignment).
+    // A guard may query their own status; admins may query any email.
+    const session = await currentSession();
+    if (!session) {
+      return NextResponse.json(
+        { ok: false, error: { message: "Authentication required.", code: "unauthorized" } },
+        { status: 401 },
+      );
+    }
     const url = new URL(request.url);
     const email = url.searchParams.get("email")?.trim().toLowerCase();
 
@@ -16,6 +27,15 @@ export async function GET(request: Request) {
       return NextResponse.json(
         { ok: false, error: { message: "Email query parameter is required.", code: "bad_request" } },
         { status: 400 },
+      );
+    }
+
+    // Non-admin users may only query their own status.
+    const isAdmin = session.role === "admin" || session.role === "super_admin";
+    if (!isAdmin && session.email.toLowerCase() !== email) {
+      return NextResponse.json(
+        { ok: false, error: { message: "You may only query your own registration status.", code: "forbidden" } },
+        { status: 403 },
       );
     }
 

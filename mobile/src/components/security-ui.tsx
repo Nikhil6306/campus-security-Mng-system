@@ -17,7 +17,7 @@ export const colors = {
   muted: '#5F6F86',
   line: '#DCE5F2',
   border: '#DCE5F2',
-  slateSoft: '#F0F4F8',
+  slateSoft: '#F4F7FB',
   green: '#168A55',
   greenSoft: '#E8F7F0',
   red: '#D64545',
@@ -31,7 +31,7 @@ export function AppText({ children, style, ...props }: ComponentProps<typeof Tex
 }
 
 export function IconBox({ icon: Icon, color = colors.blue, size = 21, background = colors.blueSoft }: {
-  icon: any;
+  icon: LucideIcon;
   color?: string;
   size?: number;
   background?: string;
@@ -119,19 +119,18 @@ export function Card({ children, style }: { children: ReactNode; style?: object 
   return <View style={[styles.card, style]}>{children}</View>;
 }
 
-export function Button({ label, onPress, icon: Icon, variant = 'primary', disabled = false, style }: {
+export function Button({ label, onPress, icon: Icon, variant = 'primary', disabled = false }: {
   label: string;
   onPress: () => void;
-  icon?: any;
+  icon?: LucideIcon;
   variant?: 'primary' | 'secondary' | 'danger' | 'outline';
   disabled?: boolean;
-  style?: any;
 }) {
   const buttonStyle = variant === 'danger' ? styles.buttonDanger : variant === 'secondary' ? styles.buttonSecondary : variant === 'outline' ? styles.buttonOutline : styles.buttonPrimary;
   const textStyle = variant === 'secondary' ? styles.buttonSecondaryText : variant === 'outline' ? styles.buttonOutlineText : styles.buttonText;
   const iconColor = variant === 'secondary' ? colors.blue : variant === 'outline' ? colors.ink : colors.white;
   return (
-    <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={({ pressed }) => [styles.button, buttonStyle, pressed && styles.pressed, disabled && styles.disabled, style]}>
+    <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={({ pressed }) => [styles.button, buttonStyle, pressed && styles.pressed, disabled && styles.disabled]}>
       {Icon ? <Icon size={18} color={iconColor} strokeWidth={2.2} /> : null}
       <AppText style={textStyle}>{label}</AppText>
     </Pressable>
@@ -168,8 +167,8 @@ export function Pill({ label, tone = 'blue' }: { label: string; tone?: 'blue' | 
 }
 
 export function Notice({ children, tone = 'blue' }: { children: ReactNode; tone?: 'blue' | 'red' | 'green' | 'amber' }) {
-  const noticeStyle = tone === 'red' ? styles.noticeRed : tone === 'green' ? styles.noticeGreen : tone === 'amber' ? styles.pillAmber : styles.noticeBlue;
-  const noticeText = tone === 'red' ? styles.noticeRedText : tone === 'green' ? styles.noticeGreenText : tone === 'amber' ? styles.pillAmberText : styles.noticeBlueText;
+  const noticeStyle = tone === 'red' ? styles.noticeRed : tone === 'green' ? styles.noticeGreen : tone === 'amber' ? styles.noticeAmber : styles.noticeBlue;
+  const noticeText = tone === 'red' ? styles.noticeRedText : tone === 'green' ? styles.noticeGreenText : tone === 'amber' ? styles.noticeAmberText : styles.noticeBlueText;
   return <View style={[styles.notice, noticeStyle]}><AppText style={[styles.noticeText, noticeText]}>{children}</AppText></View>;
 }
 
@@ -281,6 +280,8 @@ const styles = StyleSheet.create({
   noticeRedText: { color: '#9C2E36' },
   noticeGreen: { backgroundColor: colors.greenSoft, borderColor: '#C8EDDA' },
   noticeGreenText: { color: '#236B4F' },
+  noticeAmber: { backgroundColor: colors.amberSoft, borderColor: '#FDE68A' },
+  noticeAmberText: { color: colors.amber },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: { minHeight: 44, borderRadius: 22, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.white },
   chipSelected: { backgroundColor: colors.blueSoft, borderColor: colors.blue },

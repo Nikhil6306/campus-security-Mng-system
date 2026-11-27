@@ -1,200 +1,299 @@
-/**
- * OTP management service for the DSVV Campus Security Management System.
- *
- * Implements:
- * - Cryptographically secure 6-digit OTP generation (node:crypto randomInt)
- * - Secure hashing via scrypt (never plain text)
- * - 5-minute expiry (configurable via OTP_EXPIRY_MINUTES)
- * - 60-second resend cooldown per (email, purpose)
- * - Max 5 attempts with attempt tracking
- * - Purpose isolation (signup, password_reset, email_change_old, email_change_new)
- * - Anti-enumeration for password recovery
- * - Single-use consumption
- * - EmailJS delivery with Resend fallback and dev simulation
- * - Storage in Supabase `auth_email_otps` with SQLite fallback
- */
-
 import "server-only";
 
-import { randomInt } from "node:crypto";
+import { createHmac, randomInt, timingSafeEqual } from "node:crypto";
 import { get, run, tx } from "../db";
 import { hashPassword, randomToken, verifyPassword } from "../password";
 import { AuthError } from "../auth";
-import { getSupabaseAdminClient, isSupabaseConfigured } from "@/lib/supabase";
-import { sendOtpEmail } from "@/lib/email/email-service";
-import { OTP_CONFIG } from "@/lib/email/email-config";
-import type { OtpPurpose } from "@/lib/email/email-templates";
+import { getSupabaseAdminClient, getSupabaseServerClient, isSupabaseConfigured } from "@/lib/supabase";
+import { sendCampusEmail } from "./email";
+import { getAppOrigin } from "../app-origin";
 
-export interface AuthEmailOtpRecord {
-  id: string;
-  user_id: string | null;
-  email: string;
-  otp_hash: string;
-  otp_salt: string;
-  purpose: OtpPurpose;
-  expires_at: string;
-  attempts: number;
-  max_attempts: number;
-  verified_at: string | null;
-  consumed_at: string | null;
-  created_at: string;
+const OTP_EXPIRY_MINUTES = 5;
+const RESEND_COOLDOWN_SECONDS = 60;
+const MAX_VERIFICATION_ATTEMPTS = 5;
+
+function recoverySigningSecret(): string {
+  return (
+    process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ||
+    process.env.JWT_ACCESS_SECRET?.trim() ||
+    "csms-local-recovery-secret"
+  );
 }
 
-// ---- OTP Generation & Dispatch ----------------------------------------------
+export function signRecoveryToken(email: string): string {
+  const payload = Buffer.from(
+    JSON.stringify({ email: email.trim().toLowerCase(), exp: Date.now() + 15 * 60_000, jti: randomToken(12) }),
+  ).toString("base64url");
+  const sig = createHmac("sha256", recoverySigningSecret()).update(payload).digest("base64url");
+  return `rec.${payload}.${sig}`;
+}
 
-export async function createAndSendOtp(params: {
+export function verifyRecoveryToken(token: string): { email: string } | null {
+  if (!token || !token.startsWith("rec.")) return null;
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  const [, payload, sig] = parts;
+  const expectedSig = createHmac("sha256", recoverySigningSecret()).update(payload).digest("base64url");
+  const a = Buffer.from(sig);
+  const b = Buffer.from(expectedSig);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+  try {
+    const parsed = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as { email?: string; exp?: number };
+    if (!parsed.email || !parsed.exp || Date.now() > parsed.exp) return null;
+    return { email: parsed.email.toLowerCase() };
+  } catch {
+    return null;
+  }
+}
+
+export interface OtpRecord {
+  id: string;
   email: string;
-  purpose: OtpPurpose;
-  userId?: string | null;
-  recipientName?: string;
-}): Promise<{ ok: boolean; message: string }> {
-  const cleanEmail = params.email.trim().toLowerCase();
-  const purpose = params.purpose;
-  const cooldownSeconds = OTP_CONFIG.resendCooldownSeconds;
-  const expiryMinutes = OTP_CONFIG.expiryMinutes;
-  const maxAttempts = OTP_CONFIG.maxAttempts;
+  otp_hash: string;
+  salt: string;
+  attempts: number;
+  max_attempts: number;
+  created_at: string;
+  expires_at: string;
+  used_at: string | null;
+}
 
-  // 1. Enforce Resend Cooldown (60 seconds)
-  const recent = get<AuthEmailOtpRecord>(
-    `SELECT * FROM auth_email_otps
+/**
+ * Creates and dispatches a password recovery OTP.
+ * Enforces a 60-second cooldown and never exposes the plaintext OTP to client code or API responses.
+ */
+export async function createPasswordResetOtp(
+  email: string,
+): Promise<{ ok: boolean; message: string }> {
+  const cleanEmail = email.trim().toLowerCase();
+
+  // 1. Enforce Resend Cooldown (60 seconds) across SQLite & Supabase
+  let recent = get<OtpRecord>(
+    `SELECT * FROM password_reset_otps
       WHERE lower(email) = lower(?)
-        AND purpose = ?
-        AND consumed_at IS NULL
-        AND datetime(created_at, '+${cooldownSeconds} seconds') > datetime('now')
+        AND used_at IS NULL
+        AND datetime(created_at, '+${RESEND_COOLDOWN_SECONDS} seconds') > datetime('now')
       ORDER BY created_at DESC LIMIT 1`,
-    [cleanEmail, purpose],
+    [cleanEmail],
   );
+
+  if (!recent && isSupabaseConfigured()) {
+    try {
+      const admin = getSupabaseAdminClient();
+      const cutoff = new Date(Date.now() - RESEND_COOLDOWN_SECONDS * 1000).toISOString();
+      const { data: sbRecent } = await admin
+        .from("password_reset_otps")
+        .select("*")
+        .ilike("email", cleanEmail)
+        .is("used_at", null)
+        .gt("created_at", cutoff)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (sbRecent) recent = sbRecent as OtpRecord;
+    } catch {
+      // Ignore
+    }
+  }
 
   if (recent) {
     const elapsedSeconds = Math.max(
       0,
       Math.floor((Date.now() - new Date(recent.created_at).getTime()) / 1000),
     );
-    const waitSeconds = Math.max(1, cooldownSeconds - elapsedSeconds);
+    const waitSeconds = Math.max(1, RESEND_COOLDOWN_SECONDS - elapsedSeconds);
     throw new AuthError(
       `Please wait ${waitSeconds} seconds before requesting another verification code.`,
       429,
     );
   }
 
-  // 2. Generate cryptographically secure 6-digit OTP
-  const rawOtp = randomInt(100000, 999999).toString();
+  // 2. Check if user exists (Supabase or SQLite)
+  let userExists = false;
+  let rawOtp: string | null = null;
+  let actionLink: string | null = null;
 
-  // 3. Hash OTP before storing (never plaintext)
-  const { hash: otpHash, salt: otpSalt } = hashPassword(rawOtp);
-  const now = new Date();
-  const expiresAt = new Date(now.getTime() + expiryMinutes * 60 * 1000);
-  const id = `otp-${randomToken().slice(0, 16)}`;
-
-  // 4. Invalidate previous active OTPs for this email + purpose, then insert new one
-  tx(() => {
-    run(
-      `UPDATE auth_email_otps
-          SET consumed_at = ?
-        WHERE lower(email) = lower(?)
-          AND purpose = ?
-          AND consumed_at IS NULL`,
-      [now.toISOString(), cleanEmail, purpose],
-    );
-
-    run(
-      `INSERT INTO auth_email_otps (
-        id, user_id, email, otp_hash, otp_salt, purpose,
-        expires_at, attempts, max_attempts, verified_at, consumed_at, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, NULL, NULL, ?)`,
-      [
-        id,
-        params.userId ?? null,
-        cleanEmail,
-        otpHash,
-        otpSalt,
-        purpose,
-        expiresAt.toISOString(),
-        maxAttempts,
-        now.toISOString(),
-      ],
-    );
-
-    // Also write to legacy password_reset_otps for backwards compatibility if purpose is password_reset
-    if (purpose === "password_reset") {
-      run(
-        "UPDATE password_reset_otps SET used_at = ? WHERE lower(email) = lower(?) AND used_at IS NULL",
-        [now.toISOString(), cleanEmail],
-      );
-      run(
-        `INSERT INTO password_reset_otps (id, email, otp_hash, salt, attempts, max_attempts, created_at, expires_at, used_at)
-         VALUES (?, ?, ?, ?, 0, ?, ?, ?, NULL)`,
-        [id, cleanEmail, otpHash, otpSalt, maxAttempts, now.toISOString(), expiresAt.toISOString()],
-      );
-    }
-  });
-
-  // Also persist to Supabase if configured
   if (isSupabaseConfigured()) {
     try {
       const admin = getSupabaseAdminClient();
-      await admin.from("auth_email_otps").insert({
-        id,
-        user_id: params.userId || null,
+      const { data: prof } = await admin
+        .from("profiles")
+        .select("id, active")
+        .ilike("email", cleanEmail)
+        .maybeSingle();
+
+      // Do not allow inactive / pending / rejected guard accounts to reset password
+      if (prof && !prof.active) {
+        return {
+          ok: true,
+          message: "If an account matches this email, password reset instructions and a verification code have been sent.",
+        };
+      }
+
+      const { data: linkData, error: linkErr } = await admin.auth.admin.generateLink({
+        type: "recovery",
         email: cleanEmail,
-        otp_hash: otpHash,
-        otp_salt: otpSalt,
-        purpose,
-        expires_at: expiresAt.toISOString(),
-        attempts: 0,
-        max_attempts: maxAttempts,
-        created_at: now.toISOString(),
       });
-    } catch (sbErr) {
-      console.warn("[otp] Supabase auth_email_otps insert warning:", (sbErr as Error).message);
+
+      if (!linkErr && linkData?.properties) {
+        userExists = true;
+        rawOtp = linkData.properties.email_otp || null;
+        actionLink = linkData.properties.action_link || null;
+      }
+    } catch {
+      // In case of network error or missing user
     }
   }
 
-  // 5. Dispatch email via EmailJS (with Resend fallback / dev simulation)
-  const recipientName = params.recipientName ?? cleanEmail.split("@")[0];
-  await sendOtpEmail({
-    toEmail: cleanEmail,
-    toName: recipientName,
-    otp: rawOtp,
-    purpose,
-    userId: params.userId ?? undefined,
+  if (!userExists) {
+    const localUser = get<{ id: string }>(
+      "SELECT id FROM app_users WHERE lower(email) = lower(?)",
+      [cleanEmail],
+    );
+    if (localUser) {
+      userExists = true;
+    }
+  }
+
+  // Anti-enumeration: If user does not exist, return a generic success message
+  if (!userExists) {
+    return {
+      ok: true,
+      message: "If an account matches this email, password reset instructions and a verification code have been sent.",
+    };
+  }
+
+  // Generate fallback OTP if Supabase did not return one
+  if (!rawOtp) {
+    rawOtp = randomInt(100000, 999999).toString();
+  }
+
+  // 3. Hash OTP before storing (never plaintext)
+  const { hash: otpHash, salt } = hashPassword(rawOtp);
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + OTP_EXPIRY_MINUTES * 60 * 1000);
+  const id = `otp-${randomToken().slice(0, 16)}`;
+
+  tx(() => {
+    // Invalidate previous unverified OTPs for this email
+    run(
+      "UPDATE password_reset_otps SET used_at = ? WHERE lower(email) = lower(?) AND used_at IS NULL",
+      [now.toISOString(), cleanEmail],
+    );
+
+    run(
+      `INSERT INTO password_reset_otps (id, email, otp_hash, salt, attempts, max_attempts, created_at, expires_at, used_at)
+       VALUES (?, ?, ?, ?, 0, ?, ?, ?, NULL)`,
+      [id, cleanEmail, otpHash, salt, MAX_VERIFICATION_ATTEMPTS, now.toISOString(), expiresAt.toISOString()],
+    );
   });
+
+  if (isSupabaseConfigured()) {
+    try {
+      const admin = getSupabaseAdminClient();
+      await admin
+        .from("password_reset_otps")
+        .update({ used_at: now.toISOString() })
+        .ilike("email", cleanEmail)
+        .is("used_at", null);
+
+      await admin.from("password_reset_otps").insert({
+        id,
+        email: cleanEmail,
+        otp_hash: otpHash,
+        salt,
+        attempts: 0,
+        max_attempts: MAX_VERIFICATION_ATTEMPTS,
+        created_at: now.toISOString(),
+        expires_at: expiresAt.toISOString(),
+        used_at: null,
+      });
+    } catch (sbOtpErr) {
+      console.warn("[otp] Supabase OTP persist warning:", sbOtpErr);
+    }
+  }
+
+  // 4. Dispatch Email if email service is configured
+  const resetUrl = actionLink || `${getAppOrigin()}/reset-password?email=${encodeURIComponent(cleanEmail)}`;
+  try {
+    if (process.env.RESEND_API_KEY) {
+      await sendCampusEmail({
+        to: cleanEmail,
+        subject: "DSVV Campus Security — Password Reset Verification Code",
+        html: `
+          <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 8px;">
+            <h2 style="color: #0f172a; margin-top: 0;">Password Reset Request</h2>
+            <p style="color: #475569; font-size: 15px;">You requested a password reset for your Campus Security Management System account at Dev Sanskriti Vishwavidyalaya.</p>
+            <div style="background-color: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 6px; padding: 18px; text-align: center; margin: 24px 0;">
+              <span style="font-size: 13px; color: #64748b; display: block; margin-bottom: 6px;">Your One-Time Verification Code</span>
+              <span style="font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #0284c7; font-family: monospace;">${rawOtp}</span>
+              <span style="font-size: 12px; color: #94a3b8; display: block; margin-top: 6px;">Valid for 5 minutes · Single use only</span>
+            </div>
+            <p style="color: #475569; font-size: 14px;">Alternatively, click the link below to reset your password directly:</p>
+            <p><a href="${resetUrl}" style="display: inline-block; background-color: #0284c7; color: #ffffff; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: 500;">Reset Password</a></p>
+            <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
+            <p style="color: #94a3b8; font-size: 12px; margin-bottom: 0;">If you did not request this password reset, please ignore this email or contact Campus Security immediately.</p>
+          </div>
+        `,
+        text: `Your Campus Security password reset verification code is: ${rawOtp}\n\nValid for 5 minutes. Alternatively, reset using this link: ${resetUrl}`,
+      });
+    }
+  } catch (emailErr) {
+    console.warn("[otp] Email dispatch warning:", emailErr);
+  }
 
   return {
     ok: true,
-    message: "A 6-digit verification code has been sent to your email.",
+    message: "If an account matches this email, password reset instructions and a verification code have been sent.",
   };
 }
 
-// ---- OTP Verification --------------------------------------------------------
+/**
+ * Verifies a submitted OTP code.
+ * Rejects expired codes, enforces maximum 5 attempts, prevents reuse, and returns a temporary recovery session token.
+ */
+export async function verifyPasswordResetOtp(
+  email: string,
+  otp: string,
+): Promise<{ ok: boolean; recoveryToken: string; message: string }> {
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanOtp = otp.trim().replace(/\D/g, "");
 
-export async function verifyOtpCode(params: {
-  email: string;
-  otp: string;
-  purpose: OtpPurpose;
-}): Promise<{ ok: boolean; verifiedToken: string; message: string }> {
-  const cleanEmail = params.email.trim().toLowerCase();
-  const cleanOtp = params.otp.trim().replace(/\D/g, "");
-  const purpose = params.purpose;
-
-  if (!cleanOtp || cleanOtp.length !== OTP_CONFIG.length) {
-    throw new AuthError(`Please enter a valid ${OTP_CONFIG.length}-digit verification code.`, 400);
+  if (!cleanOtp) {
+    throw new AuthError("Please enter a valid verification code.", 400);
   }
 
-  // 1. Fetch latest active OTP record for this email and purpose
-  const record = get<AuthEmailOtpRecord>(
-    `SELECT * FROM auth_email_otps
+  // 1. Fetch latest active OTP record (SQLite + Supabase fallback for stateless serverless)
+  let record = get<OtpRecord>(
+    `SELECT * FROM password_reset_otps
       WHERE lower(email) = lower(?)
-        AND purpose = ?
       ORDER BY created_at DESC LIMIT 1`,
-    [cleanEmail, purpose],
+    [cleanEmail],
   );
+
+  if (!record && isSupabaseConfigured()) {
+    try {
+      const admin = getSupabaseAdminClient();
+      const { data: sbOtp } = await admin
+        .from("password_reset_otps")
+        .select("*")
+        .ilike("email", cleanEmail)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (sbOtp) {
+        record = sbOtp as OtpRecord;
+      }
+    } catch {
+      // Ignore Supabase read error
+    }
+  }
 
   if (!record) {
     throw new AuthError("No verification request found for this email. Please request a new code.", 400);
   }
 
-  if (record.consumed_at) {
+  if (record.used_at) {
     throw new AuthError("This verification code has already been used. Please request a new one.", 401);
   }
 
@@ -211,13 +310,46 @@ export async function verifyOtpCode(params: {
   }
 
   // 2. Increment attempt count
-  run("UPDATE auth_email_otps SET attempts = attempts + 1 WHERE id = ?", [record.id]);
-  if (purpose === "password_reset") {
-    run("UPDATE password_reset_otps SET attempts = attempts + 1 WHERE id = ?", [record.id]);
+  run("UPDATE password_reset_otps SET attempts = attempts + 1 WHERE id = ?", [record.id]);
+  if (isSupabaseConfigured()) {
+    try {
+      const admin = getSupabaseAdminClient();
+      await admin
+        .from("password_reset_otps")
+        .update({ attempts: record.attempts + 1 })
+        .eq("id", record.id);
+    } catch {
+      // Ignore
+    }
   }
 
-  // 3. Verify hash
-  const isValid = verifyPassword(cleanOtp, { hash: record.otp_hash, salt: record.otp_salt });
+  // 3. Verify OTP code
+  let isValid = false;
+  let supabaseAccessToken: string | null = null;
+
+  // Check Supabase Auth verifyOtp if configured
+  if (isSupabaseConfigured()) {
+    try {
+      const anonClient = getSupabaseServerClient();
+      const { data, error } = await anonClient.auth.verifyOtp({
+        email: cleanEmail,
+        token: cleanOtp,
+        type: "recovery",
+      });
+
+      if (!error && data?.session?.access_token) {
+        isValid = true;
+        supabaseAccessToken = data.session.access_token;
+      }
+    } catch {
+      // Fall through to hash verification
+    }
+  }
+
+  // Fallback / check against stored hash
+  if (!isValid) {
+    isValid = verifyPassword(cleanOtp, { hash: record.otp_hash, salt: record.salt });
+  }
 
   if (!isValid) {
     const remainingAttempts = Math.max(0, record.max_attempts - (record.attempts + 1));
@@ -230,136 +362,41 @@ export async function verifyOtpCode(params: {
     );
   }
 
-  // 4. Mark as verified and consumed
-  const verifiedToken = `tok-${randomToken()}`;
-  tx(() => {
-    run(
-      "UPDATE auth_email_otps SET verified_at = ?, consumed_at = ? WHERE id = ?",
-      [now.toISOString(), now.toISOString(), record.id],
-    );
-    if (purpose === "password_reset") {
-      run("UPDATE password_reset_otps SET used_at = ? WHERE id = ?", [now.toISOString(), record.id]);
-    }
-  });
-
+  // 4. Mark OTP as used (prevents replay/reuse)
+  run("UPDATE password_reset_otps SET used_at = ? WHERE id = ?", [now.toISOString(), record.id]);
   if (isSupabaseConfigured()) {
     try {
       const admin = getSupabaseAdminClient();
       await admin
-        .from("auth_email_otps")
-        .update({ verified_at: now.toISOString(), consumed_at: now.toISOString() })
+        .from("password_reset_otps")
+        .update({ used_at: now.toISOString() })
         .eq("id", record.id);
     } catch {
       // Ignore
     }
   }
 
-  return {
-    ok: true,
-    verifiedToken,
-    message: "Verification code verified successfully.",
-  };
-}
-
-// ---- Legacy Compatibility Wrappers ------------------------------------------
-
-/**
- * Creates and dispatches a password recovery OTP.
- * Retains exact signature for existing routes/services.
- */
-export async function createPasswordResetOtp(
-  email: string,
-): Promise<{ ok: boolean; message: string }> {
-  const cleanEmail = email.trim().toLowerCase();
-
-  // Anti-enumeration check
-  let userExists = false;
-  let userName = cleanEmail.split("@")[0];
-
-  if (isSupabaseConfigured()) {
-    try {
-      const admin = getSupabaseAdminClient();
-      const { data: profile } = await admin
-        .from("profiles")
-        .select("id, full_name")
-        .eq("email", cleanEmail)
-        .single();
-      if (profile) {
-        userExists = true;
-        userName = profile.full_name || userName;
-      }
-    } catch {
-      // Ignore
+  // 5. Issue recovery token
+  // Use Supabase access token if available, otherwise issue a signed stateless recovery token
+  // (plus local SQLite session for offline unit tests)
+  let recoveryToken = supabaseAccessToken;
+  if (!recoveryToken) {
+    recoveryToken = signRecoveryToken(cleanEmail);
+    const user = get<{ id: string }>("SELECT id FROM app_users WHERE lower(email) = lower(?)", [cleanEmail]);
+    if (user) {
+      const expiresAt = new Date(now.getTime() + 15 * 60 * 1000); // 15 mins
+      run("INSERT INTO sessions (id, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)", [
+        recoveryToken,
+        user.id,
+        now.toISOString(),
+        expiresAt.toISOString(),
+      ]);
     }
-  }
-
-  if (!userExists) {
-    const localUser = get<{ id: string; name: string }>(
-      "SELECT id, name FROM app_users WHERE lower(email) = lower(?)",
-      [cleanEmail],
-    );
-    if (localUser) {
-      userExists = true;
-      userName = localUser.name || userName;
-    }
-  }
-
-  // Anti-enumeration: If user doesn't exist, return generic success without dispatching email
-  if (!userExists) {
-    return {
-      ok: true,
-      message: "If an account matches this email, password reset instructions and a verification code have been sent.",
-    };
-  }
-
-  await createAndSendOtp({
-    email: cleanEmail,
-    purpose: "password_reset",
-    recipientName: userName,
-  });
-
-  return {
-    ok: true,
-    message: "If an account matches this email, password reset instructions and a verification code have been sent.",
-  };
-}
-
-/**
- * Verifies a password reset OTP.
- * Retains exact signature for existing routes/services.
- */
-export async function verifyPasswordResetOtp(
-  email: string,
-  otp: string,
-): Promise<{ ok: boolean; recoveryToken: string; message: string }> {
-  const result = await verifyOtpCode({
-    email,
-    otp,
-    purpose: "password_reset",
-  });
-
-  // Create recovery session in sessions table (valid for 15 minutes)
-  const cleanEmail = email.trim().toLowerCase();
-  const recoveryToken = result.verifiedToken;
-  const now = new Date();
-  const expiresAt = new Date(now.getTime() + 15 * 60 * 1000);
-
-  const user = get<{ id: string }>(
-    "SELECT id FROM app_users WHERE lower(email) = lower(?)",
-    [cleanEmail],
-  );
-  if (user) {
-    run("INSERT INTO sessions (id, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)", [
-      recoveryToken,
-      user.id,
-      now.toISOString(),
-      expiresAt.toISOString(),
-    ]);
   }
 
   return {
     ok: true,
     recoveryToken,
-    message: result.message,
+    message: "Verification code verified successfully. You may now enter your new password.",
   };
 }

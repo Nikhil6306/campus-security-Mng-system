@@ -501,6 +501,49 @@ export async function syncFromSupabase(force = false): Promise<void> {
       });
     }
 
+    // 4b. Guard Registration Requests
+    const { data: guardReqs } = await admin.from("guard_registration_requests").select("*");
+    if (guardReqs && guardReqs.length > 0) {
+      tx(() => {
+        for (const r of guardReqs) {
+          run(
+            `INSERT INTO guard_registration_requests
+               (id, full_name, email, phone, guard_id, designation, assigned_gate,
+                password_hash, password_salt, status, rejection_reason, created_at, reviewed_at, reviewed_by)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(id) DO UPDATE SET
+               full_name = excluded.full_name,
+               phone = excluded.phone,
+               guard_id = excluded.guard_id,
+               designation = excluded.designation,
+               assigned_gate = excluded.assigned_gate,
+               password_hash = CASE WHEN excluded.password_hash <> '' THEN excluded.password_hash ELSE guard_registration_requests.password_hash END,
+               password_salt = CASE WHEN excluded.password_salt <> '' THEN excluded.password_salt ELSE guard_registration_requests.password_salt END,
+               status = excluded.status,
+               rejection_reason = excluded.rejection_reason,
+               reviewed_at = excluded.reviewed_at,
+               reviewed_by = excluded.reviewed_by`,
+            [
+              r.id,
+              r.full_name,
+              String(r.email || "").toLowerCase(),
+              r.phone || "",
+              r.guard_id || "",
+              r.designation || "Security Guard",
+              r.assigned_gate || "Main Gate",
+              r.password_hash || "",
+              r.password_salt || "",
+              r.status || "PENDING",
+              r.rejection_reason || null,
+              r.created_at || new Date().toISOString(),
+              r.reviewed_at || null,
+              r.reviewed_by || null,
+            ],
+          );
+        }
+      });
+    }
+
     // 5. Students
     const { data: students } = await admin.from("students").select("*");
     if (students && students.length > 0) {

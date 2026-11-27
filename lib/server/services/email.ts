@@ -92,6 +92,84 @@ export async function sendCampusEmail(
  * Guard Account Notifications
  * ------------------------------------------------------------------ */
 
+export interface GuardRegistrationSubmittedNotice {
+  email: string;
+  fullName: string;
+  requestId: string;
+}
+
+export async function sendGuardRegistrationSubmittedEmail(
+  notice: GuardRegistrationSubmittedNotice,
+): Promise<CampusEmailReceipt | null> {
+  const subject = `DSVV Campus Security - Guard Registration Submitted (${notice.requestId})`;
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f1f5f9; margin: 0; padding: 24px; color: #1e293b; }
+    .card { max-width: 580px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border: 1px solid #e2e8f0; }
+    .header { background-color: #0A192F; padding: 28px 24px; text-align: center; border-bottom: 3px solid #F59E0B; }
+    .header h1 { color: #ffffff; font-size: 20px; margin: 0; letter-spacing: 0.5px; text-transform: uppercase; }
+    .header p { color: #94A3B8; font-size: 13px; margin: 6px 0 0 0; }
+    .body { padding: 28px 24px; }
+    .greeting { font-size: 16px; font-weight: 600; color: #0f172a; margin-bottom: 12px; }
+    .badge { display: inline-block; background-color: #FEF3C7; color: #92400E; padding: 4px 12px; border-radius: 9999px; font-size: 13px; font-weight: 700; margin-bottom: 16px; }
+    .details { background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; margin: 20px 0; }
+    .detail-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #EDF2F7; font-size: 14px; }
+    .detail-row:last-child { border-bottom: none; }
+    .detail-label { color: #64748B; font-weight: 500; }
+    .detail-val { color: #0F172A; font-weight: 600; text-align: right; }
+    .message-box { background-color: #EFF6FF; border-left: 4px solid #3B82F6; padding: 14px 16px; border-radius: 4px; font-size: 13px; color: #1E40AF; margin-top: 20px; line-height: 1.5; }
+    .footer { background-color: #F8FAFC; padding: 20px 24px; text-align: center; font-size: 12px; color: #94A3B8; border-top: 1px solid #E2E8F0; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <h1>DSVV Campus Security</h1>
+      <p>Dev Sanskriti Vishwavidyalaya · Security Administration</p>
+    </div>
+    <div class="body">
+      <div class="badge">⏳ Registration Awaiting Admin Approval</div>
+      <div class="greeting">Dear ${notice.fullName},</div>
+      <p>Your guard registration request has been submitted successfully. Your account is currently awaiting Admin approval. You will be able to access the Guard Dashboard after your request is approved.</p>
+      
+      <div class="details">
+        <div class="detail-row"><span class="detail-label">Applicant Name:</span><span class="detail-val">${notice.fullName}</span></div>
+        <div class="detail-row"><span class="detail-label">Reference ID:</span><span class="detail-val">${notice.requestId}</span></div>
+        <div class="detail-row"><span class="detail-label">Registered Email:</span><span class="detail-val">${notice.email}</span></div>
+        <div class="detail-row"><span class="detail-label">Current Status:</span><span class="detail-val" style="color: #D97706;">PENDING</span></div>
+      </div>
+
+      <div class="message-box">
+        <strong>What happens next?</strong><br>
+        The Chief Security Administrator will review your application and assign your duty post and shift. Once approved, you will receive an activation email and will be able to log in to the Guard Dashboard.
+      </div>
+    </div>
+    <div class="footer">
+      Dev Sanskriti Vishwavidyalaya, Shantikunj, Haridwar, Uttarakhand - 249411<br>
+      Automated System Message · Please do not reply directly to this email.
+    </div>
+  </div>
+</body>
+</html>
+`;
+
+  try {
+    return await sendCampusEmail({
+      to: notice.email,
+      subject,
+      html,
+      text: `Hello ${notice.fullName}, your guard registration request (ID: ${notice.requestId}) has been submitted successfully. Your account is currently awaiting Admin approval. You will be able to access the Guard Dashboard after your request is approved.`,
+    });
+  } catch (err) {
+    console.warn(`[email] Guard registration submission email to ${notice.email} not dispatched (Resend not configured or dev mode):`, (err as Error).message);
+    return null;
+  }
+}
+
 export interface GuardApprovalNotice {
   email: string;
   fullName: string;

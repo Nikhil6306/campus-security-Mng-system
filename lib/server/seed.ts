@@ -363,8 +363,9 @@ function seedGuardDuty(): void {
     ["Sports Gate", "Night", 1, 1],
   ] as const;
 
+  let staffIdx = 1;
   for (const [gate, shift, minGuards, idealGuards] of staffing) {
-    const id = `REQ-${gate.replace(/\s+/g, "").toUpperCase()}-${shift.toUpperCase()}`;
+    const id = `STF-${String(staffIdx++).padStart(3, "0")}`;
     run(
       `INSERT INTO gate_staffing_requirements(id, gate, shift_type, min_guards, ideal_guards, updated_at)
        VALUES (?,?,?,?,?,?)
@@ -490,6 +491,8 @@ function seedGuardDuty(): void {
        VALUES (?,?,?,?,?,?,?,?,1)
        ON CONFLICT(id) DO UPDATE SET title = excluded.title, location = excluded.location, instructions = excluded.instructions, required_items = excluded.required_items, photo_required = excluded.photo_required, order_index = excluded.order_index, active = excluded.active`,
       [id, routeId, title, loc, inst, items, photoReq, sort],
+    );
+  }
     );
   }
 }

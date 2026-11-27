@@ -110,6 +110,25 @@ export async function signIn(email: string, password: string): Promise<SignInRes
         }
 
         if (!profile.active) {
+          const { data: sbReq } = await admin
+            .from("guard_registration_requests")
+            .select("status, rejection_reason")
+            .ilike("email", cleanEmail)
+            .maybeSingle();
+          if (sbReq?.status === "PENDING") {
+            throw new AuthError(
+              "Your guard registration request has been submitted successfully. Your account is currently awaiting Admin approval. You will be able to access the Guard Dashboard after your request is approved.",
+              403,
+            );
+          }
+          if (sbReq?.status === "REJECTED") {
+            throw new AuthError(
+              sbReq.rejection_reason
+                ? `Your registration request was rejected: ${sbReq.rejection_reason}`
+                : "Your registration request was rejected by the administrator.",
+              403,
+            );
+          }
           throw new AuthError("This account has been deactivated. Contact the administrator.", 403);
         }
 
@@ -132,6 +151,46 @@ export async function signIn(email: string, password: string): Promise<SignInRes
 
         return { session, token: data.session.access_token };
       } else {
+        // Check if user is a registered guard awaiting admin approval (SQLite + Supabase)
+        let pendingReq = get<{ status: string; rejection_reason: string | null }>(
+          "SELECT status, rejection_reason FROM guard_registration_requests WHERE lower(email) = lower(?)",
+          [cleanEmail],
+        );
+        if (!pendingReq) {
+          try {
+            const adminLookup = getSupabaseAdminClient();
+            const { data: sbReq } = await adminLookup
+              .from("guard_registration_requests")
+              .select("status, rejection_reason")
+              .ilike("email", cleanEmail)
+              .maybeSingle();
+            if (sbReq) pendingReq = sbReq;
+          } catch {
+            // Ignore Supabase lookup failure
+          }
+        }
+        if (pendingReq) {
+          if (pendingReq.status === "PENDING") {
+            throw new AuthError(
+              "Your guard registration request has been submitted successfully. Your account is currently awaiting Admin approval. You will be able to access the Guard Dashboard after your request is approved.",
+              403,
+            );
+          }
+          if (pendingReq.status === "REJECTED") {
+            throw new AuthError(
+              pendingReq.rejection_reason
+                ? `Your registration request was rejected: ${pendingReq.rejection_reason}`
+                : "Your registration request was rejected by the administrator.",
+              403,
+            );
+          }
+          if (pendingReq.status === "SUSPENDED") {
+            throw new AuthError(
+              "Your guard account has been suspended. Please contact the administrator.",
+              403,
+            );
+          }
+        }
         console.warn("[auth] Supabase sign-in returned error, evaluating local fallback:", error?.message);
       }
     } catch (err) {
@@ -190,7 +249,7 @@ export async function signIn(email: string, password: string): Promise<SignInRes
     if (pendingReq) {
       if (pendingReq.status === "PENDING") {
         throw new AuthError(
-          "Your guard registration is pending administrator approval. You will receive an email once approved.",
+          "Your guard registration request has been submitted successfully. Your account is currently awaiting Admin approval. You will be able to access the Guard Dashboard after your request is approved.",
           403,
         );
       }
@@ -398,24 +457,38 @@ export async function resetPassword(
 
   if (isSupabaseConfigured()) {
     try {
-      const sb = getSupabaseServerClient(token);
-      const { data: { user }, error: userErr } = await sb.auth.getUser(token);
-      if (!userErr && user) {
-        resolvedUserId = user.id;
-        userEmail = user.email || null;
-      }
-
-      const { error } = await sb.auth.updateUser({ password: newPassword });
-
-      if (!error) {
-        updated = true;
-      } else if (resolvedUserId) {
-        // If token might be an admin/recovery session, try admin updateUserById
+      const { verifyRecoveryToken } = await import("./services/otp");
+      const rec = verifyRecoveryToken(token);
+      if (rec) {
         const admin = getSupabaseAdminClient();
-        const { error: adminUpdateErr } = await admin.auth.admin.updateUserById(resolvedUserId, {
-          password: newPassword,
-        });
-        if (!adminUpdateErr) updated = true;
+        const { data: prof } = await admin
+          .from("profiles")
+          .select("id, active")
+          .ilike("email", rec.email)
+          .maybeSingle();
+        if (prof?.id && prof.active) {
+          const { error: adminUpdateErr } = await admin.auth.admin.updateUserById(prof.id, {
+            password: newPassword,
+          });
+          if (!adminUpdateErr) updated = true;
+        }
+      } else {
+        const sb = getSupabaseServerClient(token);
+        const { error } = await sb.auth.updateUser({ password: newPassword });
+
+        if (!error) {
+          updated = true;
+        } else {
+          // If token might be an admin/recovery session, try getting user and updating
+          const admin = getSupabaseAdminClient();
+          const { data: { user }, error: userErr } = await sb.auth.getUser(token);
+          if (!userErr && user) {
+            const { error: adminUpdateErr } = await admin.auth.admin.updateUserById(user.id, {
+              password: newPassword,
+            });
+            if (!adminUpdateErr) updated = true;
+          }
+        }
       }
     } catch {
       // Fall through to SQLite session check

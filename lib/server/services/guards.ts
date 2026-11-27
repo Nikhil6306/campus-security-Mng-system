@@ -9,7 +9,9 @@ import { findGuard, guardActivity, listGuards, mapCheckLog, mapIncident } from "
 import type { CheckLog, Incident } from "@/lib/types";
 import { revokeSessionsFor } from "../auth";
 import { hashPassword } from "../password";
-import { sendGuardApprovalEmail, sendGuardRejectionEmail } from "./email";
+import { persistSecondaryToSupabase, persistToSupabase } from "../supabase-db";
+import { getSupabaseAdminClient, isSupabaseConfigured } from "@/lib/supabase";
+import { sendGuardApprovalEmail, sendGuardRegistrationSubmittedEmail, sendGuardRejectionEmail } from "./email";
 import type { guardSchema } from "../validation";
 import type { z } from "zod";
 
@@ -66,6 +68,7 @@ export function createGuard(input: GuardInput, actor: AuthSession): SecurityGuar
   });
 
   publish("guards", "created", created.id);
+  persistSecondaryToSupabase("security_guards", toSupabaseGuardPayload(created), "upsert", "id");
   return created;
 }
 
@@ -133,6 +136,7 @@ export function updateGuard(id: string, input: GuardInput, actor: AuthSession): 
   });
 
   publish("guards", "updated", id);
+  persistSecondaryToSupabase("security_guards", toSupabaseGuardPayload(updated), "upsert", "id");
   return updated;
 }
 
@@ -170,6 +174,7 @@ export function deleteGuard(id: string, actor: AuthSession): void {
   });
 
   publish("guards", "deleted", id);
+  persistSecondaryToSupabase("security_guards", { id }, "delete", "id");
 }
 
 /* ------------------------------------------------------------------ *
@@ -248,7 +253,7 @@ export interface GuardRegistrationInput {
   fullName: string;
   email: string;
   phone: string;
-  guardId: string;
+  guardId?: string;
   password: string;
   designation?: string;
   assignedGate?: string;
@@ -273,16 +278,18 @@ export interface GuardRegistrationRow {
 
 export function createGuardRegistrationRequest(input: GuardRegistrationInput): GuardRegistrationRow {
   const cleanEmail = input.email.trim().toLowerCase();
-  const cleanPhone = input.phone.trim();
+  const rawDigits = input.phone.replace(/\D/g, "");
+  const normalizedPhone = rawDigits.length === 12 && rawDigits.startsWith("91") ? rawDigits.slice(2) : rawDigits;
+  const cleanPhone = normalizedPhone.length === 10 ? normalizedPhone : input.phone.trim();
   const cleanName = input.fullName.trim();
-  const cleanGuardId = (input.guardId.trim() || `GRD-${Date.now().toString().slice(-4)}`).toUpperCase();
+  const cleanGuardId = (input.guardId?.trim() || nextId("GRD", { pad: 3 })).toUpperCase();
 
-  if (!cleanName) throw badRequest("Full name is required.");
+  if (!cleanName || cleanName.length < 3) throw badRequest("Full name must be at least 3 characters.");
   if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
     throw badRequest("A valid email address is required.");
   }
-  if (!cleanPhone || cleanPhone.length < 10) {
-    throw badRequest("A valid 10-digit mobile number is required.");
+  if (!/^[6-9]\d{9}$/.test(normalizedPhone)) {
+    throw badRequest("A valid 10-digit Indian mobile number is required (+91 optional).");
   }
   if (!input.password || input.password.length < 6) {
     throw badRequest("Password must be at least 6 characters.");
@@ -294,7 +301,7 @@ export function createGuardRegistrationRequest(input: GuardRegistrationInput): G
     throw conflict("An account with this email address already exists. Please log in.");
   }
 
-  // Check existing in guard_registration_requests
+  // Check existing in guard_registration_requests by email
   const existingReq = get<GuardRegistrationRow>(
     "SELECT * FROM guard_registration_requests WHERE lower(email) = lower(?)",
     [cleanEmail],
@@ -310,13 +317,73 @@ export function createGuardRegistrationRequest(input: GuardRegistrationInput): G
     // If previously REJECTED, allow re-submitting with new details
   }
 
+  // Check duplicate mobile number in guard_registration_requests
+  const existingPhoneReq = get<GuardRegistrationRow>(
+    "SELECT * FROM guard_registration_requests WHERE phone = ? OR phone = ? OR phone = ?",
+    [normalizedPhone, `+91${normalizedPhone}`, input.phone.trim()],
+  );
+  if (existingPhoneReq && existingPhoneReq.id !== existingReq?.id) {
+    if (existingPhoneReq.status === "PENDING") {
+      throw conflict("A guard registration request with this mobile number is already pending administrator approval.");
+    }
+    if (existingPhoneReq.status === "APPROVED") {
+      throw conflict("A guard account with this mobile number already exists. Please log in.");
+    }
+    throw conflict("A registration with this mobile number already exists.");
+  }
+
+  // Check duplicate mobile number in security_guards roster
+  const existingGuardPhone = get<{ id: string }>(
+    "SELECT id FROM security_guards WHERE phone = ? OR phone = ? OR phone = ?",
+    [normalizedPhone, `+91${normalizedPhone}`, input.phone.trim()],
+  );
+  if (existingGuardPhone) {
+    throw conflict("A registered security guard with this mobile number already exists.");
+  }
+
   const { hash, salt } = hashPassword(input.password);
-  const id = existingReq?.id ?? nextId("REQ-GRD", { pad: 4 });
+  const idPre = existingReq?.id ?? nextId("REQ-GRD", { pad: 4 });
   const timestamp = now();
   const designation = input.designation?.trim() || "Security Guard";
   const assignedGate = input.assignedGate?.trim() || "Main Gate";
 
+  // All duplicate checks and the INSERT run inside a single exclusive transaction
+  // so that concurrent requests cannot race past the email/phone guards.
+  let id = idPre;
   tx(() => {
+    // Re-check inside transaction for race-condition safety
+    const concurrentUser = get<{ id: string }>("SELECT id FROM app_users WHERE lower(email) = lower(?)", [cleanEmail]);
+    if (concurrentUser) throw conflict("An account with this email address already exists. Please log in.");
+
+    const concurrentReq = get<GuardRegistrationRow>(
+      "SELECT * FROM guard_registration_requests WHERE lower(email) = lower(?)",
+      [cleanEmail],
+    );
+    if (concurrentReq && concurrentReq.status === "PENDING") {
+      throw conflict("Your guard registration is already pending administrator approval.");
+    }
+    if (concurrentReq && concurrentReq.status === "APPROVED") {
+      throw conflict("Your guard account has already been approved. Please log in.");
+    }
+    // Use existing id if re-submitting after REJECTED
+    if (concurrentReq) id = concurrentReq.id;
+
+    const concurrentPhone = get<GuardRegistrationRow>(
+      "SELECT * FROM guard_registration_requests WHERE (phone = ? OR phone = ? OR phone = ?) AND id != ?",
+      [normalizedPhone, `+91${normalizedPhone}`, input.phone.trim(), id],
+    );
+    if (concurrentPhone) {
+      if (concurrentPhone.status === "PENDING") throw conflict("A guard registration request with this mobile number is already pending administrator approval.");
+      if (concurrentPhone.status === "APPROVED") throw conflict("A guard account with this mobile number already exists. Please log in.");
+      throw conflict("A registration with this mobile number already exists.");
+    }
+
+    const concurrentGuardPhone = get<{ id: string }>(
+      "SELECT id FROM security_guards WHERE phone = ? OR phone = ? OR phone = ?",
+      [normalizedPhone, `+91${normalizedPhone}`, input.phone.trim()],
+    );
+    if (concurrentGuardPhone) throw conflict("A registered security guard with this mobile number already exists.");
+
     run(
       `INSERT INTO guard_registration_requests
          (id, full_name, email, phone, guard_id, designation, assigned_gate,
@@ -361,6 +428,13 @@ export function createGuardRegistrationRequest(input: GuardRegistrationInput): G
   if (!created) throw notFound("Failed to create guard registration request.");
 
   publish("guards", "registration_requested", id);
+
+  void sendGuardRegistrationSubmittedEmail({
+    email: cleanEmail,
+    fullName: cleanName,
+    requestId: id,
+  });
+
   return created;
 }
 
@@ -615,4 +689,359 @@ export function reactivateGuardAccount(guardId: string, actor: AuthSession): voi
   });
 
   publish("guards", "reactivated", guardId);
+}
+
+/* ------------------------------------------------------------------ *
+ * Supabase Persistence Helpers for Guard Registration & Approval
+ * ------------------------------------------------------------------ */
+
+function toSupabaseGuardPayload(g: SecurityGuard): Record<string, unknown> {
+  return {
+    id: g.id,
+    employee_id: g.employeeId,
+    full_name: g.fullName,
+    phone: g.phone,
+    email: g.email,
+    photo_url: g.photoUrl ?? null,
+    shift: g.shift,
+    shift_start: g.shiftStart,
+    shift_end: g.shiftEnd,
+    assigned_gate: g.assignedGate,
+    status: g.status,
+    joining_date: g.joiningDate,
+    emergency_contact: g.emergencyContact,
+    address: g.address,
+    created_at: g.createdAt,
+    updated_at: g.updatedAt,
+  };
+}
+
+async function hydrateGuardRequestFromSupabase(requestId: string): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  const local = get<GuardRegistrationRow>("SELECT * FROM guard_registration_requests WHERE id = ?", [requestId]);
+  if (local) return;
+
+  const admin = getSupabaseAdminClient();
+  const { data: r } = await admin
+    .from("guard_registration_requests")
+    .select("*")
+    .eq("id", requestId)
+    .maybeSingle();
+
+  if (!r) return;
+
+  run(
+    `INSERT INTO guard_registration_requests
+       (id, full_name, email, phone, guard_id, designation, assigned_gate,
+        password_hash, password_salt, status, rejection_reason, created_at, reviewed_at, reviewed_by)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+     ON CONFLICT(id) DO UPDATE SET
+       status = excluded.status,
+       rejection_reason = excluded.rejection_reason,
+       reviewed_at = excluded.reviewed_at,
+       reviewed_by = excluded.reviewed_by`,
+    [
+      r.id,
+      r.full_name,
+      String(r.email || "").toLowerCase(),
+      r.phone || "",
+      r.guard_id || "",
+      r.designation || "Security Guard",
+      r.assigned_gate || "Main Gate",
+      r.password_hash || "",
+      r.password_salt || "",
+      r.status || "PENDING",
+      r.rejection_reason || null,
+      r.created_at || now(),
+      r.reviewed_at || null,
+      r.reviewed_by || null,
+    ],
+  );
+}
+
+/**
+ * Registers a new guard request in both local SQLite and Supabase (single source of truth),
+ * and provisions a disabled Supabase Auth user (`profiles.active = false`) so the guard's
+ * chosen password is stored securely in Supabase Auth and cannot be used until Admin approves.
+ */
+export async function createGuardRegistrationRequestAsync(
+  input: GuardRegistrationInput,
+): Promise<GuardRegistrationRow> {
+  const cleanEmail = input.email.trim().toLowerCase();
+  const rawDigits = input.phone.replace(/\D/g, "");
+  const normalizedPhone = rawDigits.length === 12 && rawDigits.startsWith("91") ? rawDigits.slice(2) : rawDigits;
+
+  if (isSupabaseConfigured()) {
+    const admin = getSupabaseAdminClient();
+
+    // 1. Check existing profile in Supabase
+    const { data: existingProfile } = await admin
+      .from("profiles")
+      .select("id, role, active")
+      .ilike("email", cleanEmail)
+      .maybeSingle();
+
+    // Allow re-submission only if there's a REJECTED guard request for this email
+    const { data: existingSbReq } = await admin
+      .from("guard_registration_requests")
+      .select("id, status, email, phone")
+      .ilike("email", cleanEmail)
+      .maybeSingle();
+
+    if (existingSbReq) {
+      if (existingSbReq.status === "PENDING") {
+        throw conflict("Your guard registration is already pending administrator approval.");
+      }
+      if (existingSbReq.status === "APPROVED") {
+        throw conflict("Your guard account has already been approved. Please log in.");
+      }
+    } else if (existingProfile) {
+      throw conflict("An account with this email address already exists. Please log in.");
+    }
+
+    // 2. Check duplicate mobile in Supabase guard_registration_requests
+    if (/^[6-9]\d{9}$/.test(normalizedPhone)) {
+      const { data: phoneReqs } = await admin
+        .from("guard_registration_requests")
+        .select("id, status")
+        .or(`phone.eq.${normalizedPhone},phone.eq.+91${normalizedPhone}`);
+      const conflictingPhone = (phoneReqs || []).find((r) => r.id !== existingSbReq?.id);
+      if (conflictingPhone) {
+        if (conflictingPhone.status === "PENDING") {
+          throw conflict("A guard registration request with this mobile number is already pending administrator approval.");
+        }
+        if (conflictingPhone.status === "APPROVED") {
+          throw conflict("A guard account with this mobile number already exists. Please log in.");
+        }
+        throw conflict("A registration with this mobile number already exists.");
+      }
+
+      const { data: guardPhones } = await admin
+        .from("security_guards")
+        .select("id")
+        .or(`phone.eq.${normalizedPhone},phone.eq.+91${normalizedPhone}`)
+        .limit(1);
+      if (guardPhones && guardPhones.length > 0) {
+        throw conflict("A registered security guard with this mobile number already exists.");
+      }
+    }
+  }
+
+  // Create local SQLite record & hash password
+  const created = createGuardRegistrationRequest(input);
+
+  if (isSupabaseConfigured()) {
+    const admin = getSupabaseAdminClient();
+
+    // Persist registration request to Supabase
+    await persistToSupabase(
+      "guard_registration_requests",
+      {
+        id: created.id,
+        full_name: created.full_name,
+        email: created.email,
+        phone: created.phone,
+        guard_id: created.guard_id,
+        designation: created.designation,
+        assigned_gate: created.assigned_gate,
+        password_hash: created.password_hash,
+        password_salt: created.password_salt,
+        status: created.status,
+        rejection_reason: created.rejection_reason,
+        created_at: created.created_at,
+        reviewed_at: created.reviewed_at,
+        reviewed_by: created.reviewed_by,
+      },
+      "upsert",
+      "email",
+    );
+
+    // Provision a locked Supabase Auth account (active = false in profiles)
+    // so the guard's chosen password is stored in Supabase Auth without plaintext storage.
+    try {
+      const { data: createdAuth, error: createErr } = await admin.auth.admin.createUser({
+        email: cleanEmail,
+        password: input.password,
+        email_confirm: true,
+        user_metadata: {
+          full_name: created.full_name,
+          role: "visitor",
+          pending_guard: true,
+        },
+      });
+
+      if (!createErr && createdAuth?.user) {
+        await admin.from("profiles").upsert({
+          id: createdAuth.user.id,
+          email: cleanEmail,
+          full_name: created.full_name,
+          role: "visitor",
+          active: false,
+          updated_at: now(),
+        });
+      } else if (createErr && /already/i.test(createErr.message)) {
+        // Re-submission for previously rejected user: update password & keep active = false
+        const { data: prof } = await admin.from("profiles").select("id").ilike("email", cleanEmail).maybeSingle();
+        if (prof?.id) {
+          await admin.auth.admin.updateUserById(prof.id, { password: input.password });
+          await admin.from("profiles").update({ active: false, full_name: created.full_name, updated_at: now() }).eq("id", prof.id);
+        }
+      }
+    } catch (authSyncErr) {
+      console.warn("[guards] Supabase Auth pre-provisioning warning:", authSyncErr);
+    }
+  }
+
+  return created;
+}
+
+/**
+ * Approves a guard registration atomically across SQLite, Supabase tables,
+ * and Supabase Auth `public.profiles` (activating role = 'security').
+ */
+export async function approveGuardRegistrationAsync(
+  requestId: string,
+  actor: AuthSession,
+  options?: ApproveGuardOptions,
+): Promise<{ guard: SecurityGuard; accountId: string }> {
+  await hydrateGuardRequestFromSupabase(requestId);
+  const result = approveGuardRegistration(requestId, actor, options);
+
+  if (isSupabaseConfigured()) {
+    const admin = getSupabaseAdminClient();
+    const req = get<GuardRegistrationRow>("SELECT * FROM guard_registration_requests WHERE id = ?", [requestId]);
+
+    await persistToSupabase("security_guards", toSupabaseGuardPayload(result.guard), "upsert", "id");
+
+    if (req) {
+      await persistToSupabase(
+        "guard_registration_requests",
+        {
+          id: req.id,
+          status: "APPROVED",
+          reviewed_at: req.reviewed_at,
+          reviewed_by: req.reviewed_by,
+        },
+        "update",
+        "id",
+      );
+
+      // Activate Supabase Auth profile with 'security' role
+      const { data: prof } = await admin
+        .from("profiles")
+        .select("id")
+        .ilike("email", req.email)
+        .maybeSingle();
+
+      if (prof?.id) {
+        await admin
+          .from("profiles")
+          .update({
+            role: "security",
+            ref_id: result.guard.id,
+            gate: result.guard.assignedGate,
+            full_name: result.guard.fullName,
+            active: true,
+            updated_at: now(),
+          })
+          .eq("id", prof.id);
+      } else {
+        // Fallback: look up user in auth.users or create if missing
+        const { data: listData } = await admin.auth.admin.listUsers();
+        const authUser = listData?.users?.find((u) => u.email?.toLowerCase() === req.email.toLowerCase());
+        if (authUser) {
+          await admin.from("profiles").upsert({
+            id: authUser.id,
+            email: req.email.toLowerCase(),
+            full_name: result.guard.fullName,
+            role: "security",
+            ref_id: result.guard.id,
+            gate: result.guard.assignedGate,
+            active: true,
+            updated_at: now(),
+          });
+        }
+      }
+    }
+  }
+
+  return result;
+}
+
+export async function rejectGuardRegistrationAsync(
+  requestId: string,
+  actor: AuthSession,
+  reason?: string,
+): Promise<void> {
+  await hydrateGuardRequestFromSupabase(requestId);
+  rejectGuardRegistration(requestId, actor, reason);
+
+  if (isSupabaseConfigured()) {
+    const req = get<GuardRegistrationRow>("SELECT * FROM guard_registration_requests WHERE id = ?", [requestId]);
+    if (req) {
+      await persistToSupabase(
+        "guard_registration_requests",
+        {
+          id: req.id,
+          status: "REJECTED",
+          rejection_reason: req.rejection_reason,
+          reviewed_at: req.reviewed_at,
+          reviewed_by: req.reviewed_by,
+        },
+        "update",
+        "id",
+      );
+      const admin = getSupabaseAdminClient();
+      await admin.from("profiles").update({ active: false, updated_at: now() }).ilike("email", req.email);
+    }
+  }
+}
+
+export async function suspendGuardAccountAsync(
+  guardId: string,
+  actor: AuthSession,
+  reason?: string,
+): Promise<void> {
+  suspendGuardAccount(guardId, actor, reason);
+  if (isSupabaseConfigured()) {
+    const guard = findGuard(guardId);
+    const admin = getSupabaseAdminClient();
+    await persistToSupabase("security_guards", { id: guardId, status: "Suspended", updated_at: now() }, "update", "id");
+    if (guard?.email) {
+      await admin
+        .from("guard_registration_requests")
+        .update({
+          status: "SUSPENDED",
+          rejection_reason: reason ?? "Account suspended by administrator",
+          reviewed_at: now(),
+          reviewed_by: actor.userId,
+        })
+        .ilike("email", guard.email);
+      await admin.from("profiles").update({ active: false, updated_at: now() }).ilike("email", guard.email);
+    }
+  }
+}
+
+export async function reactivateGuardAccountAsync(
+  guardId: string,
+  actor: AuthSession,
+): Promise<void> {
+  reactivateGuardAccount(guardId, actor);
+  if (isSupabaseConfigured()) {
+    const guard = findGuard(guardId);
+    const admin = getSupabaseAdminClient();
+    await persistToSupabase("security_guards", { id: guardId, status: "Active", updated_at: now() }, "update", "id");
+    if (guard?.email) {
+      await admin
+        .from("guard_registration_requests")
+        .update({
+          status: "APPROVED",
+          rejection_reason: null,
+          reviewed_at: now(),
+          reviewed_by: actor.userId,
+        })
+        .ilike("email", guard.email);
+      await admin.from("profiles").update({ active: true, role: "security", updated_at: now() }).ilike("email", guard.email);
+    }
+  }
 }
