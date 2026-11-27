@@ -724,6 +724,9 @@ export const DEMO_ACCOUNTS = [
   { id: "USR-003", email: "r62871851@gmail.com", name: "Ramu Guard", role: "security", refId: "GRD-001", gate: "Main Gate", defaultPassword: "Guard@123" },
   { id: "USR-004", email: "sunil.thapa@dsvv.edu.in", name: "Sunil Thapa", role: "security", refId: "GRD-002", gate: "Main Gate", defaultPassword: "Security@123" },
   { id: "USR-005", email: "pooja.rawat@dsvv.edu.in", name: "Pooja Rawat", role: "security", refId: "GRD-004", gate: "Hostel Gate", defaultPassword: "Security@123" },
+  { id: "USR-011", email: "rajesh.bisht@dsvv.edu.in", name: "Rajesh Bisht", role: "security", refId: "GRD-003", gate: "Service Gate", defaultPassword: "Security@123" },
+  { id: "USR-012", email: "mahesh.chauhan@dsvv.edu.in", name: "Mahesh Chauhan", role: "security", refId: "GRD-005", gate: "Sports Gate", defaultPassword: "Security@123" },
+  { id: "USR-013", email: "neha.bhandari@dsvv.edu.in", name: "Neha Bhandari", role: "security", refId: "GRD-006", gate: "Hostel Gate", defaultPassword: "Security@123" },
   // TCH-008 = Dr. Rajeshwari Trivedi · HoD, Department of Education
   { id: "USR-006", email: "rajeshwari.trivedi@dsvv.ac.in", name: "Dr. Rajeshwari Trivedi", role: "teacher", refId: "TCH-008", gate: null, defaultPassword: "Teacher@123" },
   // TCH-001 = Dr. Narendra Pratap Singh · HoD, Yogic Science
