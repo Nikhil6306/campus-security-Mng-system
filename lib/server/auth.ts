@@ -384,20 +384,37 @@ export async function resetPassword(
 
   if (isSupabaseConfigured()) {
     try {
-      const sb = getSupabaseServerClient(token);
-      const { error } = await sb.auth.updateUser({ password: newPassword });
-
-      if (!error) {
-        updated = true;
-      } else {
-        // If token might be an admin/recovery session, try getting user and updating
+      const { verifyRecoveryToken } = await import("./services/otp");
+      const rec = verifyRecoveryToken(token);
+      if (rec) {
         const admin = getSupabaseAdminClient();
-        const { data: { user }, error: userErr } = await sb.auth.getUser(token);
-        if (!userErr && user) {
-          const { error: adminUpdateErr } = await admin.auth.admin.updateUserById(user.id, {
+        const { data: prof } = await admin
+          .from("profiles")
+          .select("id, active")
+          .ilike("email", rec.email)
+          .maybeSingle();
+        if (prof?.id && prof.active) {
+          const { error: adminUpdateErr } = await admin.auth.admin.updateUserById(prof.id, {
             password: newPassword,
           });
           if (!adminUpdateErr) updated = true;
+        }
+      } else {
+        const sb = getSupabaseServerClient(token);
+        const { error } = await sb.auth.updateUser({ password: newPassword });
+
+        if (!error) {
+          updated = true;
+        } else {
+          // If token might be an admin/recovery session, try getting user and updating
+          const admin = getSupabaseAdminClient();
+          const { data: { user }, error: userErr } = await sb.auth.getUser(token);
+          if (!userErr && user) {
+            const { error: adminUpdateErr } = await admin.auth.admin.updateUserById(user.id, {
+              password: newPassword,
+            });
+            if (!adminUpdateErr) updated = true;
+          }
         }
       }
     } catch {
