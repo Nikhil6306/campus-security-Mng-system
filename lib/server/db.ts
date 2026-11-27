@@ -203,7 +203,10 @@ function openDatabase(): DatabaseSync {
   const db = new DatabaseSync(DB_PATH);
   try {
     db.exec("PRAGMA journal_mode = WAL;");
-    db.exec("PRAGMA busy_timeout = 5000;");
+    db.exec("PRAGMA busy_timeout = 10000;");
+    db.exec("PRAGMA synchronous = NORMAL;");
+    db.exec("PRAGMA cache_size = -64000;");
+    db.exec("PRAGMA temp_store = MEMORY;");
   } catch {
     // PRAGMAs might not be supported in all modes
   }

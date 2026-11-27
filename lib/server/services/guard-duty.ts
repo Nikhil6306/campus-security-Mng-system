@@ -1413,16 +1413,55 @@ export function getLiveHandoverData(gate?: string) {
   }
   vSql += " ORDER BY check_in_at ASC";
 
-  const visitors = all<Row>(vSql, vParams as any[]);
+  const rawVisitors = all<Row>(vSql, vParams as any[]);
 
-  const incidents = all<Row>(
+  const visitorsInside = rawVisitors.map((v) => {
+    return {
+      id: String(v.id || ""),
+      fullName: String(v.full_name || "Visitor"),
+      gate: String(v.gate || "Main Gate"),
+      checkInTime: String(v.check_in_at || new Date().toISOString()),
+      expectedCheckOutTime: v.expected_departure_time ? String(v.expected_departure_time) : undefined,
+      status: "Checked In",
+      hostName: String(v.host_name || "Front Desk"),
+      department: "Campus",
+      isOverdue: false,
+    };
+  });
+
+  const rawIncidents = all<Row>(
     `SELECT id, title, severity, location, status, date, time, description, reported_by, assigned_to_name
        FROM incidents
       WHERE status IN ('Open', 'Investigating')
       ORDER BY CASE severity WHEN 'Critical' THEN 1 WHEN 'High' THEN 2 WHEN 'Medium' THEN 3 ELSE 4 END, date DESC`,
   );
 
-  return { visitors, incidents };
+  const openIncidents = rawIncidents.map((inc) => ({
+    id: String(inc.id || ""),
+    type: "Incident",
+    title: String(inc.title || "Incident"),
+    location: String(inc.location || "Campus"),
+    severity: String(inc.severity || "Medium"),
+    status: String(inc.status || "Open"),
+    reportedBy: String(inc.reported_by || "Security"),
+    time: `${inc.date || ""} ${inc.time || ""}`.trim(),
+    description: String(inc.description || ""),
+  }));
+
+  const pendingCheckpoints: Array<{
+    id: string;
+    name: string;
+    location: string;
+    routeName: string;
+  }> = [];
+
+  return {
+    visitorsInside,
+    openIncidents,
+    pendingCheckpoints,
+    visitors: visitorsInside,
+    incidents: openIncidents,
+  };
 }
 
 /* ------------------------------------------------------------------ *

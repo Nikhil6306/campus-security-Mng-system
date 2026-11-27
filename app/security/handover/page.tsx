@@ -72,6 +72,10 @@ export default function SecurityHandoverPage() {
   const [handoverDetails, setHandoverDetails] = React.useState<(ShiftHandover & { items: ShiftHandoverItem[] }) | null>(null);
   const [discrepancies, setDiscrepancies] = React.useState("");
 
+  const visitorsInside = liveData?.visitorsInside || [];
+  const openIncidents = liveData?.openIncidents || [];
+  const pendingCheckpoints = liveData?.pendingCheckpoints || [];
+
   const guardId = session?.refId || "";
   const guardName = session?.name || "Security Guard";
 
@@ -86,9 +90,23 @@ export default function SecurityHandoverPage() {
         api.liveHandoverData(session?.gate || undefined),
       ]);
 
-      setAssignments(myAssignments);
-      setHandovers(allHandovers);
-      setLiveData(live);
+      setAssignments(Array.isArray(myAssignments) ? myAssignments : []);
+      setHandovers(Array.isArray(allHandovers) ? allHandovers : []);
+      setLiveData({
+        visitorsInside: Array.isArray(live?.visitorsInside)
+          ? live.visitorsInside
+          : Array.isArray((live as any)?.visitors)
+            ? (live as any).visitors
+            : [],
+        openIncidents: Array.isArray(live?.openIncidents)
+          ? live.openIncidents
+          : Array.isArray((live as any)?.incidents)
+            ? (live as any).incidents
+            : [],
+        pendingCheckpoints: Array.isArray(live?.pendingCheckpoints)
+          ? live.pendingCheckpoints
+          : [],
+      });
     } catch (err) {
       toast.error(errorMessage(err) || "Failed to load duty data");
     } finally {
@@ -275,19 +293,19 @@ export default function SecurityHandoverPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 border-t pt-3 text-xs">
                   <div className="rounded-md border bg-background/50 p-3 space-y-0.5">
                     <span className="text-muted-foreground">Visitors Inside Campus</span>
-                    <div className="text-lg font-bold text-foreground">{liveData.visitorsInside.length}</div>
+                    <div className="text-lg font-bold text-foreground">{visitorsInside.length}</div>
                     <span className="text-[11px] text-muted-foreground">
-                      {liveData.visitorsInside.filter((v) => v.isOverdue).length} overdue for exit
+                      {visitorsInside.filter((v) => v.isOverdue).length} overdue for exit
                     </span>
                   </div>
                   <div className="rounded-md border bg-background/50 p-3 space-y-0.5">
                     <span className="text-muted-foreground">Open Incidents on File</span>
-                    <div className="text-lg font-bold text-amber-600">{liveData.openIncidents.length}</div>
+                    <div className="text-lg font-bold text-amber-600">{openIncidents.length}</div>
                     <span className="text-[11px] text-muted-foreground">Will be carried forward in handover</span>
                   </div>
                   <div className="rounded-md border bg-background/50 p-3 space-y-0.5">
                     <span className="text-muted-foreground">Patrol Checkpoints Available</span>
-                    <div className="text-lg font-bold text-foreground">{liveData.pendingCheckpoints.length}</div>
+                    <div className="text-lg font-bold text-foreground">{pendingCheckpoints.length}</div>
                     <Link href="/security/patrol" className="text-[11px] text-blue-600 hover:underline">
                       Open Patrol Checklist &rarr;
                     </Link>
@@ -398,17 +416,17 @@ export default function SecurityHandoverPage() {
               <div className="flex items-center justify-between border-b pb-2">
                 <h3 className="font-semibold text-sm flex items-center gap-1.5">
                   <Users className="h-4 w-4" />
-                  <span>Visitors Currently Inside Campus ({liveData.visitorsInside.length})</span>
+                  <span>Visitors Currently Inside Campus ({visitorsInside.length})</span>
                 </h3>
               </div>
 
-              {liveData.visitorsInside.length === 0 ? (
+              {visitorsInside.length === 0 ? (
                 <p className="text-xs text-muted-foreground py-4 text-center">
                   Zero active visitors inside campus.
                 </p>
               ) : (
                 <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                  {liveData.visitorsInside.map((v) => (
+                  {visitorsInside.map((v) => (
                     <div key={v.id} className="p-2.5 rounded-md border text-xs space-y-1">
                       <div className="flex items-center justify-between">
                         <strong className="text-foreground">{v.fullName}</strong>
@@ -435,17 +453,17 @@ export default function SecurityHandoverPage() {
               <div className="flex items-center justify-between border-b pb-2">
                 <h3 className="font-semibold text-sm flex items-center gap-1.5">
                   <AlertTriangle className="h-4 w-4 text-amber-600" />
-                  <span>Open Security Incidents ({liveData.openIncidents.length})</span>
+                  <span>Open Security Incidents ({openIncidents.length})</span>
                 </h3>
               </div>
 
-              {liveData.openIncidents.length === 0 ? (
+              {openIncidents.length === 0 ? (
                 <p className="text-xs text-muted-foreground py-4 text-center">
                   Zero open incidents currently reported.
                 </p>
               ) : (
                 <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                  {liveData.openIncidents.map((inc) => (
+                  {openIncidents.map((inc) => (
                     <div key={inc.id} className="p-2.5 rounded-md border text-xs space-y-1">
                       <div className="flex items-center justify-between">
                         <strong className="text-red-600 dark:text-red-400">{inc.title}</strong>
@@ -560,8 +578,8 @@ export default function SecurityHandoverPage() {
 
             <div className="rounded-md border bg-muted/20 p-3 space-y-1 text-muted-foreground">
               <strong className="text-foreground block">Automatic Attachment Summary:</strong>
-              <div>• {liveData.visitorsInside.length} visitors currently inside campus will be itemized.</div>
-              <div>• {liveData.openIncidents.length} open security incidents will be attached.</div>
+              <div>• {visitorsInside.length} visitors currently inside campus will be itemized.</div>
+              <div>• {openIncidents.length} open security incidents will be attached.</div>
               <div>• Patrol checkpoint log will be locked to this session.</div>
             </div>
 
