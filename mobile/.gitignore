@@ -31,7 +31,9 @@ yarn-error.*
 *.pem
 
 # local env files
-.env*.local
+.env
+.env*
+!.env.example
 
 # typescript
 *.tsbuildinfo
@@ -40,4 +42,5 @@ example
 
 # generated native folders
 /ios
-/android
+# /android is tracked so native Android configuration and Gradle builds are preserved
+# Android build artifacts and local.properties are ignored by mobile/android/.gitignore
