@@ -157,7 +157,7 @@ function bookingPayload(overrides = {}) {
     email: "photo.visitor@example.com",
     gender: "Female",
     visitorType: "Guest",
-    idType: "Aadhaar Card",
+    idType: "Driving Licence",
     idNumber: "123456789012",
     purpose: "Campus Visit",
     purposeDetail: "Visiting the campus to see the facilities before admission.",

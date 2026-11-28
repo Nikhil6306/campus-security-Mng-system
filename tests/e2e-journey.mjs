@@ -225,8 +225,8 @@ async function main() {
     whatsappCountryCode: "+91",
     whatsappNumber: mobile,
     visitorType: "Guest",
-    idType: "Aadhaar Card",
-    idNumber: "9999 8888 7777",
+    idType: "Driving Licence",
+    idNumber: "DL-08-20260001",
     photoId,
     organization: "E2E Demo Systems",
     address: "1 Test Road, Haridwar",
@@ -245,8 +245,6 @@ async function main() {
       {
         fullName: "Test Companion",
         mobile: "9876500022",
-        // Structurally valid (Verhoeff) and belonging to nobody.
-        aadhaar: "234567890124",
         relation: "Colleague",
         address: "1 Test Road, Haridwar, Uttarakhand",
       },
@@ -280,9 +278,8 @@ async function main() {
   const guests = rows("SELECT * FROM visit_guests WHERE booking_id = ?", [bookingId]);
   check("the accompanying visitor is stored", guests.length === 1);
   check(
-    "the guest row keeps only the last four Aadhaar digits",
-    guests[0]?.aadhaar_last4 === "0124" &&
-      !String(guests[0]?.aadhaar_ciphertext ?? "").includes("234567890124"),
+    "the guest row stores no Aadhaar data",
+    !guests[0]?.aadhaar_ciphertext && !guests[0]?.aadhaar_last4,
   );
 
   /* --- Duplicate prevention --------------------------------------- */

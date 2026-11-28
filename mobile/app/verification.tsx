@@ -116,6 +116,7 @@ export default function VerificationScreen() {
   const isExpired = status === 'Expired';
   const isCheckedOut = status === 'Checked Out';
   const isRejected = status === 'Rejected';
+  const hasAdvisory = Boolean(isApproved && (result?.issues?.length ?? 0) > 0 && result?.ok);
 
   return (
     <Page title="Pass Verification" subtitle="Security Gate Live Verification">
@@ -154,6 +155,8 @@ export default function VerificationScreen() {
               backgroundColor:
                 isInside
                   ? colors.blueSoft
+                  : hasAdvisory
+                  ? colors.amberSoft
                   : result.ok
                   ? colors.greenSoft
                   : isPending
@@ -165,6 +168,8 @@ export default function VerificationScreen() {
           <View style={styles.statusRow}>
             {isInside ? (
               <DoorOpen color={colors.blue} size={30} />
+            ) : hasAdvisory ? (
+              <BadgeCheck color={colors.amber} size={30} />
             ) : result.ok ? (
               <BadgeCheck color={colors.green} size={30} />
             ) : isPending ? (
@@ -177,6 +182,8 @@ export default function VerificationScreen() {
                 label={
                   isInside
                     ? 'ALREADY CHECKED IN (INSIDE)'
+                    : hasAdvisory
+                    ? 'APPROVED — ADVISORY CLEARANCE'
                     : isApproved && result.ok
                     ? 'APPROVED & VALID FOR ENTRY'
                     : isPending
@@ -190,7 +197,7 @@ export default function VerificationScreen() {
                     : 'INVALID PASS'
                 }
                 tone={
-                  isInside ? 'blue' : result.ok ? 'green' : isPending ? 'amber' : 'red'
+                  isInside ? 'blue' : hasAdvisory ? 'amber' : result.ok ? 'green' : isPending ? 'amber' : 'red'
                 }
               />
               <AppText
@@ -200,6 +207,8 @@ export default function VerificationScreen() {
                     color:
                       isInside
                         ? colors.blue
+                        : hasAdvisory
+                        ? colors.amber
                         : result.ok
                         ? colors.green
                         : isPending
@@ -210,6 +219,8 @@ export default function VerificationScreen() {
               >
                 {isInside
                   ? 'Visitor Currently Inside Campus'
+                  : hasAdvisory
+                  ? 'Eligible for Entry (Advisory Notice)'
                   : result.ok
                   ? 'Eligible for Campus Entry'
                   : isPending
@@ -309,7 +320,7 @@ export default function VerificationScreen() {
 
           {/* Active IN / OUT Action Buttons */}
           <View style={styles.actionBox}>
-            {result?.nextAction === 'check-in' || (result?.ok && !isInside) ? (
+            {result?.nextAction === 'check-in' || (result?.ok && !isInside) || hasAdvisory ? (
               <Button
                 label={actionLoading ? 'Recording Entry...' : `Mark IN at ${booking.gate || 'Gate'}`}
                 icon={LogIn}
@@ -326,7 +337,13 @@ export default function VerificationScreen() {
               />
             ) : null}
 
-            {!result?.ok && !isInside ? (
+            {hasAdvisory && !isInside ? (
+              <Notice tone="amber">
+                {error || 'Advisory notice on entry schedule. Guard authorization permitted.'}
+              </Notice>
+            ) : null}
+
+            {!result?.ok && !isInside && !hasAdvisory ? (
               <Notice tone="red">
                 Entry authorization rejected. Please direct visitor to the Security Office.
               </Notice>

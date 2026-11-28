@@ -19,7 +19,7 @@ import { VisitRowActions } from "@/components/admin/visit-actions";
 import { VisitorPhotoThumb } from "@/components/shared/visitor-photo";
 import type { VisitRequest } from "@/lib/types";
 import { formatDate } from "@/lib/utils";
-import { maskAadhaar } from "@/lib/validation";
+import { maskIdNumber } from "@/lib/validation";
 
 interface VisitTableProps {
   records: VisitRequest[];
@@ -81,7 +81,7 @@ export function VisitTable({
         <TableHeader>
           <TableRow className="hover:bg-transparent">
             <TableHead className="min-w-[180px]">Visitor</TableHead>
-            <TableHead className="min-w-[130px]">Masked Aadhaar</TableHead>
+            <TableHead className="min-w-[130px]">Official ID</TableHead>
             <TableHead className="min-w-[120px]">Mobile</TableHead>
             <TableHead className="min-w-[70px]">Car</TableHead>
             <TableHead className="min-w-[120px]">Car Number</TableHead>
@@ -93,7 +93,7 @@ export function VisitTable({
 
         <TableBody>
           {records.map((record) => {
-            const aadhaar = record.aadhaarNumber || record.idNumber || "";
+            const idNum = record.idNumber || "";
             const mobile = record.mobileNumber || record.mobile || "";
             const hasCar = record.hasCar || Boolean(record.vehicleRequired);
             const carNumber = record.carNumber || record.vehicleNumber || "";
@@ -105,7 +105,7 @@ export function VisitTable({
                 </TableCell>
 
                 <TableCell className="font-mono text-xs text-muted-foreground">
-                  {maskAadhaar(aadhaar)}
+                  {maskIdNumber(idNum)}
                 </TableCell>
 
                 <TableCell className="font-mono text-xs text-muted-foreground">

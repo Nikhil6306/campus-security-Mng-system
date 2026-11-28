@@ -1,17 +1,28 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
-import { router } from 'expo-router';
+import { router, useIsFocused } from 'expo-router';
 import { Camera, Flashlight, Keyboard, QrCode, Search, ShieldAlert } from 'lucide-react-native';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { AppText, Button, Card, colors, Notice, Page } from '@/components/security-ui';
 
 export default function ScanScreen() {
+  const isFocused = useIsFocused();
   const [permission, requestPermission] = useCameraPermissions();
   const [active, setActive] = useState(true);
   const [torch, setTorch] = useState(false);
   const [error, setError] = useState('');
   const [manualCode, setManualCode] = useState('');
   const scanned = useRef(false);
+
+  // Release camera hardware when navigating away and reset scanner lock when returning
+  useEffect(() => {
+    if (isFocused) {
+      scanned.current = false;
+      setActive(true);
+    } else {
+      setTorch(false);
+    }
+  }, [isFocused]);
 
   const handleDetected = useCallback((result: BarcodeScanningResult) => {
     if (scanned.current) return;
@@ -69,7 +80,7 @@ export default function ScanScreen() {
         </Card>
       ) : (
         <View style={styles.cameraBox}>
-          {active ? (
+          {isFocused && active ? (
             <CameraView
               style={StyleSheet.absoluteFill}
               facing="back"

@@ -130,35 +130,44 @@ export async function queueOfflineGateAction(action: OfflineGateAction): Promise
   await appStorage.setItem('pending_gate_actions', JSON.stringify(filtered));
 }
 
+let syncOutboxInFlight: Promise<{ synced: number; remaining: number }> | null = null;
+
 export async function syncOfflineGateActions(): Promise<{ synced: number; remaining: number }> {
-  const pending = await getOfflineGateActions();
-  if (pending.length === 0) return { synced: 0, remaining: 0 };
+  if (syncOutboxInFlight) return syncOutboxInFlight;
+  syncOutboxInFlight = (async () => {
+    const pending = await getOfflineGateActions();
+    if (pending.length === 0) return { synced: 0, remaining: 0 };
 
-  const remaining: OfflineGateAction[] = [];
-  let synced = 0;
+    const remaining: OfflineGateAction[] = [];
+    let synced = 0;
 
-  for (const item of pending) {
-    try {
-      const endpoint = item.action === 'in' ? `${API_BASE_URL}/api/gate/check-in` : `${API_BASE_URL}/api/gate/check-out`;
-      const res = await fetchWithTimeout(endpoint, {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify({ bookingId: item.bookingId, gate: item.gate, note: item.note }),
-      }, 5000);
+    for (const item of pending) {
+      try {
+        const endpoint = item.action === 'in' ? `${API_BASE_URL}/api/gate/check-in` : `${API_BASE_URL}/api/gate/check-out`;
+        const res = await fetchWithTimeout(endpoint, {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({ bookingId: item.bookingId, gate: item.gate, note: item.note }),
+        }, 5000);
 
-      const json = await res.json().catch(() => ({}));
-      if (res.ok && json.ok) {
-        synced++;
-      } else {
+        const json = await res.json().catch(() => ({}));
+        if (res.ok && json.ok) {
+          synced++;
+        } else {
+          remaining.push(item);
+        }
+      } catch {
         remaining.push(item);
       }
-    } catch {
-      remaining.push(item);
     }
-  }
 
-  await appStorage.setItem('pending_gate_actions', JSON.stringify(remaining));
-  return { synced, remaining: remaining.length };
+    await appStorage.setItem('pending_gate_actions', JSON.stringify(remaining));
+    if (synced > 0) invalidateSnapshotCache();
+    return { synced, remaining: remaining.length };
+  })().finally(() => {
+    syncOutboxInFlight = null;
+  });
+  return syncOutboxInFlight;
 }
 
 export interface GuardDashboardData {
@@ -184,9 +193,19 @@ export interface GuardDashboardData {
 // Current active in-memory session
 let currentSession: GuardSession | null = null;
 
+// Short-lived snapshot cache & in-flight deduplication (eliminates duplicate /api/state calls across tabs)
+const SNAPSHOT_TTL_MS = 10_000;
+let cachedSnapshot: { data: any; fetchedAt: number } | null = null;
+let snapshotInFlight: Promise<any> | null = null;
+
+export function invalidateSnapshotCache(): void {
+  cachedSnapshot = null;
+}
+
 export const getGuardSession = () => currentSession;
 export const setGuardSession = (session: GuardSession | null) => {
   currentSession = session;
+  if (!session) invalidateSnapshotCache();
   if (session) {
     appStorage.setItem('session', JSON.stringify(session)).catch(() => {});
   } else {
@@ -439,6 +458,7 @@ export async function markVisitorIn(bookingId: string, gate = 'Main Gate', note?
 
     const json = await res.json().catch(() => ({}));
     if (res.ok && json.ok) {
+      invalidateSnapshotCache();
       return {
         success: true,
         booking: json.data?.booking,
@@ -486,6 +506,7 @@ export async function markVisitorOut(bookingId: string, gate = 'Main Gate', note
 
     const json = await res.json().catch(() => ({}));
     if (res.ok && json.ok) {
+      invalidateSnapshotCache();
       return {
         success: true,
         booking: json.data?.booking,
@@ -525,13 +546,12 @@ export async function markVisitorOut(bookingId: string, gate = 'Main Gate', note
 export async function getGuardDashboardData(date?: string): Promise<GuardDashboardData | null> {
   try {
     const q = date ? `?date=${encodeURIComponent(date)}` : '';
-    const [dashRes, stateRes] = await Promise.all([
+    const [dashRes, dbState] = await Promise.all([
       fetchWithTimeout(`${API_BASE_URL}/api/guard-duty/dashboard${q}`, { headers: authHeaders() }, 8000),
-      fetchWithTimeout(`${API_BASE_URL}/api/state`, { headers: authHeaders() }, 8000),
+      getCampusSnapshot(true),
     ]);
 
     const dashJson = await dashRes.json().catch(() => ({}));
-    const stateJson = await stateRes.json().catch(() => ({}));
 
     if (dashRes.ok && dashJson.ok) {
       const stats = dashJson.data?.stats || {
@@ -544,10 +564,10 @@ export async function getGuardDashboardData(date?: string): Promise<GuardDashboa
         criticalPatrolAlerts: 0,
       };
 
-      const dbState = stateJson.data?.state || stateJson.data || stateJson.state || {};
-      const visitors = dbState.visitRequests || dbState.visits || [];
-      const vehicles = dbState.vehicles || [];
-      const incidents = dbState.incidents || [];
+      const stateObj = dbState || {};
+      const visitors = stateObj.visitRequests || stateObj.visits || [];
+      const vehicles = stateObj.vehicles || [];
+      const incidents = stateObj.incidents || [];
 
       return {
         stats,
@@ -842,9 +862,9 @@ export async function scanStudentOutpass(payload: {
  */
 export async function getRecentActivity(): Promise<any[]> {
   try {
-    const res = await fetch(`${API_BASE_URL}/api/activity`, {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/activity`, {
       headers: authHeaders(),
-    });
+    }, 8000);
     const json = await res.json().catch(() => ({}));
     if (res.ok && json.ok) {
       return json.data || [];
@@ -857,20 +877,35 @@ export async function getRecentActivity(): Promise<any[]> {
 
 /**
  * Fetches the security role-scoped database snapshot (visitors, incidents, movements).
+ * Deduplicates concurrent calls and serves from a 10s TTL cache between tab switches.
  */
-export async function getCampusSnapshot(): Promise<any> {
-  try {
-    const res = await fetch(`${API_BASE_URL}/api/state`, {
-      headers: authHeaders(),
-    });
-    const json = await res.json().catch(() => ({}));
-    if (res.ok && json.ok && json.data?.state) {
-      return json.data.state;
-    }
-  } catch (err) {
-    console.warn('[mobile-api] getCampusSnapshot error:', err);
+export async function getCampusSnapshot(forceRefresh = false): Promise<any> {
+  if (!forceRefresh && cachedSnapshot && Date.now() - cachedSnapshot.fetchedAt < SNAPSHOT_TTL_MS) {
+    return cachedSnapshot.data;
   }
-  return null;
+  if (!forceRefresh && snapshotInFlight) {
+    return snapshotInFlight;
+  }
+
+  snapshotInFlight = (async () => {
+    try {
+      const res = await fetchWithTimeout(`${API_BASE_URL}/api/state`, {
+        headers: authHeaders(),
+      }, 8000);
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.ok && json.data?.state) {
+        cachedSnapshot = { data: json.data.state, fetchedAt: Date.now() };
+        return json.data.state;
+      }
+    } catch (err) {
+      console.warn('[mobile-api] getCampusSnapshot error:', err);
+    }
+    return cachedSnapshot?.data ?? null;
+  })().finally(() => {
+    snapshotInFlight = null;
+  });
+
+  return snapshotInFlight;
 }
 
 /**
@@ -958,7 +993,7 @@ export async function createWalkInBooking(payload: {
         hostName: payload.hostName,
         gate: payload.gate,
         photoId: resolvedPhotoId,
-        idType: payload.idType || 'Aadhaar Card',
+        idType: payload.idType || 'Driving Licence',
         idNumber: payload.idNumber || 'Verified-At-Gate',
         visitDate: new Date().toISOString().split('T')[0],
         visitTime,

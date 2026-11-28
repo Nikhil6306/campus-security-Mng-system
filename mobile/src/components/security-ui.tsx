@@ -1,7 +1,7 @@
 import type { LucideIcon } from 'lucide-react-native';
 import { ArrowLeft, ClipboardList, Home, QrCode, ScanLine, Shield, Siren, UserRound, UsersRound } from 'lucide-react-native';
 import { router, usePathname } from 'expo-router';
-import type { ComponentProps, ReactNode } from 'react';
+import { memo, type ComponentProps, type ReactNode } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -39,12 +39,13 @@ export function IconBox({ icon: Icon, color = colors.blue, size = 21, background
   return <View style={[styles.iconBox, { backgroundColor: background }]}><Icon color={color} size={size} strokeWidth={2.1} /></View>;
 }
 
-export function Page({ title, subtitle, children, back = true, bottomNav = false, right }: {
+export function Page({ title, subtitle, children, back = true, bottomNav = false, scroll = true, right }: {
   title: string;
   subtitle?: string;
   children: ReactNode;
   back?: boolean;
   bottomNav?: boolean;
+  scroll?: boolean;
   right?: ReactNode;
 }) {
   const insets = useSafeAreaInsets();
@@ -66,9 +67,13 @@ export function Page({ title, subtitle, children, back = true, bottomNav = false
           </View>
           {right ?? <View style={styles.headerSpacer} />}
         </View>
-        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scrollContent}>
-          <View style={styles.content}>{children}</View>
-        </ScrollView>
+        {scroll ? (
+          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scrollContent}>
+            <View style={styles.content}>{children}</View>
+          </ScrollView>
+        ) : (
+          <View style={[styles.content, { flex: 1 }]}>{children}</View>
+        )}
         {bottomNav ? <BottomNav /> : null}
         <View style={{ height: Math.max(insets.bottom, 8) }} />
       </View>
@@ -76,19 +81,20 @@ export function Page({ title, subtitle, children, back = true, bottomNav = false
   );
 }
 
-export function BottomNav() {
+const BOTTOM_NAV_ITEMS = [
+  { label: 'Home', route: '/dashboard', icon: Home },
+  { label: 'Scan QR', route: '/scan', icon: QrCode },
+  { label: 'Visitors', route: '/history', icon: UsersRound },
+  { label: 'Alerts', route: '/emergency-history', icon: Siren },
+  { label: 'Profile', route: '/profile', icon: UserRound },
+] as const;
+
+export const BottomNav = memo(function BottomNav() {
   const pathname = usePathname();
-  const items = [
-    { label: 'Home', route: '/dashboard', icon: Home },
-    { label: 'Scan QR', route: '/scan', icon: QrCode },
-    { label: 'Visitors', route: '/history', icon: UsersRound },
-    { label: 'Alerts', route: '/emergency-history', icon: Siren },
-    { label: 'Profile', route: '/profile', icon: UserRound },
-  ] as const;
 
   return (
     <View style={styles.bottomNav}>
-      {items.map(({ label, route, icon: Icon }) => {
+      {BOTTOM_NAV_ITEMS.map(({ label, route, icon: Icon }) => {
         const isActive = pathname === route || (route === '/dashboard' && (pathname === '/' || pathname === ''));
         return (
           <Pressable
@@ -109,7 +115,7 @@ export function BottomNav() {
       })}
     </View>
   );
-}
+});
 
 export function SectionTitle({ children, right }: { children: ReactNode; right?: ReactNode }) {
   return <View style={styles.sectionTitle}><AppText style={styles.sectionTitleText}>{children}</AppText>{right}</View>;

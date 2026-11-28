@@ -186,9 +186,8 @@ export type Gender = "Male" | "Female" | "Other" | "Prefer not to say";
 
 export const GENDERS: Gender[] = ["Male", "Female", "Other", "Prefer not to say"];
 
-/** Government photo ID presented at the gate. */
+/** Official photo ID presented at the gate. */
 export const ID_PROOF_TYPES = [
-  "Aadhaar Card",
   "PAN Card",
   "Driving Licence",
   "Voter ID",
@@ -232,7 +231,6 @@ export interface Visitor {
   fullName: string;
   mobileNumber: string;
   mobile: string;
-  aadhaarNumber: string;
   idNumber: string;
   hasCar: boolean;
   carNumber?: string;
@@ -272,11 +270,6 @@ export type GuestRelation = (typeof GUEST_RELATIONS)[number];
 
 /**
  * One additional person named on a booking.
- *
- * The Aadhaar number itself is never carried on this type — only the last four
- * digits, which is all any interface, export or message is allowed to show.
- * The full number lives encrypted in `visit_guests.aadhaar_ciphertext` and is
- * readable only by a server-side operator action.
  */
 export interface VisitGuest {
   id: string;
@@ -285,9 +278,6 @@ export interface VisitGuest {
   position: number;
   fullName: string;
   mobile: string;
-  aadhaarLast4: string;
-  /** True when the deployment stored a recoverable (encrypted) number. */
-  aadhaarStored: boolean;
   relation: GuestRelation | string;
   address: string;
   createdAt: string;
@@ -423,7 +413,6 @@ export interface VisitRequest {
 
   // Primary Visitor Information
   fullName: string;
-  aadhaarNumber: string;
   mobileNumber: string;
   mobile: string;
   hasCar: boolean;

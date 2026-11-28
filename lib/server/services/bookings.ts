@@ -8,7 +8,7 @@ import { nextBookingRef, nextId, run, toInt, tx } from "../db";
 import { audit, notify, type Actor } from "../audit";
 import { publish } from "../events";
 import { AppError, badRequest, conflict, notFound } from "../errors";
-import { randomToken } from "../password";
+import { signPassToken } from "./pass-token";
 import {
   bookedSlots,
   findAvailability,
@@ -27,7 +27,6 @@ import {
   isNetworkError,
   persistToSupabase,
 } from "../supabase-db";
-import { sealAadhaar } from "../aadhaar";
 import { resolveStoredPhoto } from "../photo-store";
 import { PHOTO_MESSAGES } from "@/lib/photo";
 import type { BookingInput, GuestInput } from "../validation";
@@ -222,7 +221,7 @@ export async function createBooking(
     throw badRequest(PHOTO_MESSAGES.required, { photoId: PHOTO_MESSAGES.required });
   }
 
-  if (settings.requireIdProof && source !== "Visitor Portal" && !input.idNumber && !input.aadhaarNumber) {
+  if (settings.requireIdProof && source !== "Visitor Portal" && !input.idNumber) {
     throw badRequest("An ID proof is required for campus entry.", {
       idNumber: "ID number is required.",
     });
@@ -295,7 +294,7 @@ export async function createBooking(
   /* --- Write ------------------------------------------------------- */
 
   const mobileVal = (input.mobileNumber || input.mobile || "").replace(/[\s-]/g, "");
-  const aadhaarVal = (input.aadhaarNumber || input.idNumber || "").replace(/[^\d]/g, "");
+  const idNumberVal = (input.idNumber || "").trim();
   const hasCarVal = Boolean(input.hasCar || input.vehicleRequired);
   const carNumberVal = hasCarVal ? (input.carNumber || input.vehicleNumber || "").trim().toUpperCase() : null;
 
@@ -311,7 +310,6 @@ export async function createBooking(
         fullName: remoteVisitor.fullName,
         mobile: mobileVal,
         mobileNumber: mobileVal,
-        aadhaarNumber: "",
         idNumber: "",
         hasCar: hasCarVal,
         carNumber: carNumberVal || undefined,
@@ -319,7 +317,7 @@ export async function createBooking(
         photoPath: remoteVisitor.photoUrl,
         email: input.email || "",
         gender: (input.gender as any) || "Prefer not to say",
-        idType: "Aadhaar Card",
+        idType: "Driving Licence",
         organization: input.organization || "",
         address: input.address || "",
         emergencyContact: input.emergencyContact || "",
@@ -354,8 +352,8 @@ export async function createBooking(
           input.fullName,
           mobileVal,
           mobileVal,
-          aadhaarVal,
-          aadhaarVal,
+          "",
+          idNumberVal,
           toInt(hasCarVal),
           carNumberVal,
           photo.path,
@@ -386,15 +384,15 @@ export async function createBooking(
           input.fullName,
           mobileVal,
           mobileVal,
-          aadhaarVal,
-          aadhaarVal,
+          "",
+          idNumberVal,
           toInt(hasCarVal),
           carNumberVal,
           photo.path,
           photo.path,
           input.email || "",
           input.gender || "Prefer not to say",
-          input.idType || "Aadhaar Card",
+          input.idType || "Driving Licence",
           input.organization || "",
           input.address || "",
           input.emergencyContact || "",
@@ -428,8 +426,8 @@ export async function createBooking(
         input.fullName,
         mobileVal,
         mobileVal,
-        aadhaarVal,
-        aadhaarVal,
+        "",
+        idNumberVal,
         toInt(hasCarVal),
         carNumberVal,
         photo.path,
@@ -442,7 +440,7 @@ export async function createBooking(
         whatsappCountryCode,
         whatsappNumber,
         input.visitorType || "Guest",
-        input.idType || "Aadhaar Card",
+        input.idType || "Driving Licence",
         input.purpose || "Campus Visit",
         input.purposeDetail ?? null,
         hostId,
@@ -461,7 +459,7 @@ export async function createBooking(
         input.specialRequirements ?? null,
         "Pending",
         source,
-        randomToken(24),
+        signPassToken(),
         passExpiryFor(input.visitDate, input.visitTime, settings.autoExpireHours),
         idempotencyKey,
         timestamp,
@@ -472,7 +470,6 @@ export async function createBooking(
     // Accompanying visitors belong to the same transaction as the booking —
     // a half-written party is never visible to the gate.
     guests.forEach((guest, index) => {
-      const sealed = sealAadhaar(guest.aadhaarNumber ?? "");
       run(
         `INSERT INTO visit_guests
            (id, booking_id, position, full_name, mobile, aadhaar_ciphertext, aadhaar_hash,
@@ -484,9 +481,9 @@ export async function createBooking(
           index + 2, // the primary visitor is 1
           guest.fullName,
           guest.mobile ?? "",
-          sealed.ciphertext,
-          sealed.hash,
-          sealed.last4,
+          null,
+          null,
+          "",
           guest.relation ?? "",
           guest.address ?? "",
           timestamp,
@@ -527,8 +524,7 @@ export async function createBooking(
         full_name: booking.fullName,
         mobile: booking.mobile,
         mobile_number: booking.mobileNumber || booking.mobile,
-        aadhaar_number: booking.aadhaarNumber || booking.idNumber || "",
-        id_number: booking.idNumber || booking.aadhaarNumber || "",
+        id_number: booking.idNumber || "",
         email: booking.email || "",
         gender: booking.gender || "Prefer not to say",
         organization: booking.organization || "",
@@ -559,9 +555,8 @@ export async function createBooking(
         whatsapp_country_code: booking.whatsappCountryCode || "+91",
         whatsapp_number: booking.whatsappNumber || booking.mobile,
         visitor_type: booking.visitorType || "Guest",
-        id_type: booking.idType || "Aadhaar Card",
-        id_number: booking.idNumber || booking.aadhaarNumber || "",
-        aadhaar_number: booking.aadhaarNumber || booking.idNumber || "",
+        id_type: booking.idType || "Driving Licence",
+        id_number: booking.idNumber || "",
         photo_url: booking.photoUrl || booking.photoPath || null,
         photo_path: booking.photoPath || booking.photoUrl || null,
         purpose: booking.purpose || "Campus Visit",
@@ -594,16 +589,12 @@ export async function createBooking(
       if (guests.length > 0) {
         for (let index = 0; index < guests.length; index++) {
           const guest = guests[index];
-          const sealed = sealAadhaar(guest.aadhaarNumber ?? "");
           await persistToSupabase("visit_guests", {
             id: `GST-${booking.id}-${index + 2}`,
             booking_id: booking.id,
             position: index + 2,
             full_name: guest.fullName,
             mobile: guest.mobile ?? "",
-            aadhaar_ciphertext: sealed.ciphertext,
-            aadhaar_hash: sealed.hash,
-            aadhaar_last4: sealed.last4,
             relation: guest.relation ?? "",
             address: guest.address ?? "",
             created_at: booking.createdAt,
@@ -722,7 +713,7 @@ export async function approveBooking(id: string, actor: AuthSession): Promise<Vi
         timestamp,
         actor.name,
         badge,
-        randomToken(24),
+        signPassToken(),
         // Backfills the window for bookings taken before passes carried one.
         passExpiryFor(current.visitDate, current.visitTime, readSettings().autoExpireHours),
         timestamp,

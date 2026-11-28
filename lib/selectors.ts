@@ -370,7 +370,7 @@ export function matchesQuery(booking: VisitRequest, query: string): boolean {
   return [
     booking.id || "",
     booking.fullName || "",
-    booking.aadhaarNumber || booking.idNumber || "",
+    booking.idNumber || "",
     booking.mobileNumber || booking.mobile || "",
     booking.hostName || "",
     booking.department || "",

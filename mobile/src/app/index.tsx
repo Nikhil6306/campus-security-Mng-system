@@ -42,18 +42,16 @@ export default function SecuritySplashScreen() {
       }),
     ]).start();
 
-    // 2. Hide native splash screen quickly so the custom UI takes over smoothly
-    const nativeSplashDismissTimer = setTimeout(() => {
-      SplashScreen.hideAsync().catch(() => {});
-    }, 200);
+    // 2. Hide native splash screen immediately so custom UI takes over without delay
+    SplashScreen.hideAsync().catch(() => {});
 
-    // 3. Initialize offline persistence and restore guard session
+    // 3. Restore guard session immediately on mount (no artificial sleep)
     let isMounted = true;
-    const initTimer = setTimeout(async () => {
+    (async () => {
       try {
         setStatusMessage('Verifying Duty Session...');
         const session = await restoreGuardSession();
-        
+
         if (!isMounted) return;
 
         if (session) {
@@ -64,27 +62,24 @@ export default function SecuritySplashScreen() {
           setPhase('portal');
           Animated.timing(contentFadeAnim, {
             toValue: 1,
-            duration: 350,
+            duration: 250,
             useNativeDriver: true,
           }).start();
         }
       } catch (err) {
         if (!isMounted) return;
         console.warn('[CSMS Security] Session restore warning:', err);
-        // Fallback to portal in offline mode rather than blocking the guard
         setPhase('portal');
         Animated.timing(contentFadeAnim, {
           toValue: 1,
-          duration: 350,
+          duration: 250,
           useNativeDriver: true,
         }).start();
       }
-    }, 1100);
+    })();
 
     return () => {
       isMounted = false;
-      clearTimeout(nativeSplashDismissTimer);
-      clearTimeout(initTimer);
     };
   }, []);
 

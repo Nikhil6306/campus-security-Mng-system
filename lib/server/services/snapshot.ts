@@ -276,7 +276,6 @@ export interface PublicBookingView {
   status: string;
   statusCode: string;
   fullName: string;
-  aadhaarNumber?: string;
   idNumber?: string;
   mobileNumber?: string;
   mobile?: string;

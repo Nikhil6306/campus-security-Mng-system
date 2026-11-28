@@ -85,7 +85,7 @@ const securityFeatures = [
 
 const securityGuidelines = [
   "All visitors must complete visitor registration prior to or upon campus entry.",
-  "Valid official identification information (such as Aadhaar Card) should be provided.",
+  "Valid official identification information (such as Driving Licence, Passport, or Institutional ID) should be provided.",
   "Visitor photographs may be recorded at entry points for identification and security purposes.",
   "Vehicles entering the campus must be properly recorded with valid registration details.",
   "All visitors should follow instructions issued by campus security personnel at all times.",
